@@ -29,6 +29,18 @@ class HevyAdapter(SourceAdapter):
         workouts_raw = await self._fetch_all_workouts(page_size)
         return self.normalize({"workouts": workouts_raw})
 
+    async def fetch_one_and_normalize(self, workout_id: str) -> IngestResult:
+        """Fetch a single workout by id (used by the webhook receiver)."""
+        async with httpx.AsyncClient(
+            headers={"api-key": self._api_key}, timeout=30,
+        ) as client:
+            resp = await client.get(f"{HEVY_BASE_URL}/workouts/{workout_id}")
+            resp.raise_for_status()
+            body = resp.json()
+        # Hevy may return the workout bare or wrapped in {"workout": {...}}
+        workout = body.get("workout", body)
+        return self.normalize({"workouts": [workout]})
+
     async def _fetch_all_workouts(self, page_size: int) -> list[dict]:
         all_workouts: list[dict] = []
         page = 1

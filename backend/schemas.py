@@ -188,8 +188,42 @@ class ChatOut(BaseModel):
     created_at: datetime
 
 
+# ── Analytics (v2) ───────────────────────────────────────────────────────────
+
+class ExercisePR(BaseModel):
+    exercise_name: str
+    best_weight: float
+    best_weight_unit: str
+    best_weight_date: date
+    best_est_1rm: float            # Epley estimate
+    best_est_1rm_date: date
+    is_recent_pr: bool             # PR set within the last 30 days
+
+
+class MuscleVolume(BaseModel):
+    muscle_group: str
+    total_volume: float            # Σ reps × weight in the window
+    sets_count: int
+
+
+class OvertrainingFlag(BaseModel):
+    metric: str                    # e.g. "acwr", "weekly_volume_spike"
+    level: str                     # ok | caution | high
+    value: float
+    message: str
+
+
+class AnalyticsSummary(BaseModel):
+    prs: list[ExercisePR]
+    muscle_volume: list[MuscleVolume]
+    overtraining: list[OvertrainingFlag]
+    window_days: int
+
+
 # ── Config ─────────────────────────────────────────────────────────────────────
 
 class AppConfig(BaseModel):
     coaching_enabled: bool
     hevy_enabled: bool
+    strava_enabled: bool
+    analytics_enabled: bool = True

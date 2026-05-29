@@ -46,6 +46,37 @@ HEVY_API_KEY=your_hevy_api_key_here
 
 Restart the stack. A **Sync Hevy** button appears in the nav. Click it to pull your latest workouts with full set/rep/weight detail.
 
+Hevy can also **push** workouts to `POST /ingest/hevy/webhook` (v2) — the receiver re-fetches the full workout by id so set detail is captured, and honours `WEBHOOK_SECRET` if set.
+
+---
+
+## Enable Strava (optional — v2)
+
+Register an API application at [strava.com/settings/api](https://www.strava.com/settings/api) to get a Client ID and Secret. Set the **Authorization Callback Domain** to your host (e.g. `localhost`).
+
+In your `.env`:
+
+```env
+ENABLE_STRAVA=true
+STRAVA_CLIENT_ID=your_client_id
+STRAVA_CLIENT_SECRET=your_client_secret
+STRAVA_REDIRECT_URI=http://localhost:8010/ingest/strava/callback
+FRONTEND_URL=http://localhost:3010
+```
+
+Restart the stack, then click **Connect Strava** in the nav to authorise. Tokens (with auto-refresh) are stored locally; **Sync Strava** pulls your recent activities. Strava only carries the workout envelope — in-gym set/rep detail still comes from Hevy.
+
+---
+
+## Analytics (v2)
+
+The **Analytics** tab surfaces:
+- **Personal records** — top weight and estimated 1RM (Epley) per exercise, with a "recent PR" badge.
+- **Volume by muscle group** — set volume mapped to muscle groups over a selectable window.
+- **Recovery & load** — acute:chronic workload ratio and week-over-week volume spike flags.
+
+No keys required — it runs on whatever strength data you've logged.
+
 ---
 
 ## Enable AI Coaching (optional)

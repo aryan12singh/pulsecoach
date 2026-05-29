@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- PulseCoach: this is a Python+Next.js repo. The Python "lib/" rule above
+# was swallowing the Next.js app's source directory. Re-include it. ---
+!frontend/src/lib/
+!frontend/src/lib/**

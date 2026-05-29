@@ -33,6 +33,18 @@ export default function Nav() {
     }
   }
 
+  async function handleStravaSync() {
+    setSyncing(true);
+    try {
+      await api.strava.sync();
+      alert("Strava sync complete");
+    } catch {
+      alert("Strava sync failed — connect Strava first");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   return (
     <nav className="bg-indigo-600 shadow">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -43,19 +55,41 @@ export default function Nav() {
             <Link href="/workouts" className={cls("/workouts")}>Workouts</Link>
             <Link href="/trends" className={cls("/trends")}>Trends</Link>
             <Link href="/goals" className={cls("/goals")}>Goals</Link>
+            {config?.analytics_enabled !== false && (
+              <Link href="/analytics" className={cls("/analytics")}>Analytics</Link>
+            )}
             {config?.coaching_enabled && (
               <Link href="/coach" className={cls("/coach")}>Coach</Link>
             )}
           </div>
-          {config?.hevy_enabled && (
-            <button
-              onClick={handleHevySync}
-              disabled={syncing}
-              className="text-xs bg-white text-indigo-700 font-semibold px-3 py-1.5 rounded-md hover:bg-indigo-50 disabled:opacity-50"
-            >
-              {syncing ? "Syncing…" : "Sync Hevy"}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {config?.strava_enabled && (
+              <>
+                <a
+                  href={api.strava.connectUrl()}
+                  className="text-xs bg-white text-orange-600 font-semibold px-3 py-1.5 rounded-md hover:bg-orange-50"
+                >
+                  Connect Strava
+                </a>
+                <button
+                  onClick={handleStravaSync}
+                  disabled={syncing}
+                  className="text-xs bg-white text-orange-600 font-semibold px-3 py-1.5 rounded-md hover:bg-orange-50 disabled:opacity-50"
+                >
+                  {syncing ? "Syncing…" : "Sync Strava"}
+                </button>
+              </>
+            )}
+            {config?.hevy_enabled && (
+              <button
+                onClick={handleHevySync}
+                disabled={syncing}
+                className="text-xs bg-white text-indigo-700 font-semibold px-3 py-1.5 rounded-md hover:bg-indigo-50 disabled:opacity-50"
+              >
+                {syncing ? "Syncing…" : "Sync Hevy"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </nav>

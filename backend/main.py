@@ -15,12 +15,13 @@ app.add_middleware(
 )
 
 # Always-on routers
-from routers import ingest, workouts, strength, metrics, goals
+from routers import ingest, workouts, strength, metrics, goals, analytics
 app.include_router(ingest.router)
 app.include_router(workouts.router)
 app.include_router(strength.router)
 app.include_router(metrics.router)
 app.include_router(goals.router)
+app.include_router(analytics.router)
 
 # Optional coaching router
 if settings.enable_coaching:
@@ -33,6 +34,8 @@ async def get_config():
     return AppConfig(
         coaching_enabled=settings.enable_coaching,
         hevy_enabled=settings.enable_hevy,
+        strava_enabled=settings.enable_strava,
+        analytics_enabled=True,
     )
 
 
