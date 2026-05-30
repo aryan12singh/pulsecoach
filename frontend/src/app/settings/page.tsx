@@ -306,8 +306,8 @@ export default function SettingsPage() {
           >
             <Field label="Client ID">
               <Input
-                placeholder={settings?.strava_client_id ?? ""}
-                defaultValue={settings?.strava_client_id ?? ""}
+                value={strVal("strava_client_id")}
+                placeholder="Enter client ID"
                 onChange={(e) => patch({ strava_client_id: e.target.value })}
               />
             </Field>
@@ -367,8 +367,8 @@ export default function SettingsPage() {
             </Field>
             <Field label="Model (optional)">
               <Input
+                value={strVal("claude_model")}
                 placeholder="Leave blank to use default"
-                defaultValue={settings?.claude_model ?? ""}
                 onChange={(e) => patch({ claude_model: e.target.value })}
               />
             </Field>

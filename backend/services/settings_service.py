@@ -53,21 +53,36 @@ def _env_defaults() -> dict[str, str | None]:
 
 
 async def seed_from_env(db: AsyncSession) -> None:
-    """Insert env-based defaults for any key not yet in DB. Run once at startup."""
+    """Seed settings from env vars at startup.
+
+    Non-None env values always win on conflict so that updating .env and
+    restarting picks up the new value. None values use DO NOTHING so they
+    don't overwrite a credential the user already configured via the UI.
+    """
     defaults = _env_defaults()
     for key, value in defaults.items():
-        stmt = (
-            pg_insert(AppSetting)
-            .values(key=key, value=value, is_secret=_SCHEMA.get(key, False))
-            .on_conflict_do_nothing(index_elements=["key"])
-        )
+        if value is not None:
+            stmt = (
+                pg_insert(AppSetting)
+                .values(key=key, value=value, is_secret=_SCHEMA.get(key, False))
+                .on_conflict_do_update(index_elements=["key"], set_={"value": value})
+            )
+        else:
+            stmt = (
+                pg_insert(AppSetting)
+                .values(key=key, value=value, is_secret=_SCHEMA.get(key, False))
+                .on_conflict_do_nothing(index_elements=["key"])
+            )
         await db.execute(stmt)
     await db.commit()
+    _invalidate()
     logger.info("Settings seeded from env vars")
 
 
 async def _load(db: AsyncSession) -> dict[str, str | None]:
     global _cache
+    if _cache is not None:
+        return _cache
     async with _cache_lock:
         if _cache is not None:
             return _cache
@@ -89,6 +104,18 @@ def mask(value: str | None) -> str | None:
     if not value:
         return None
     return f"{value[:4]}…{value[-4:]}" if len(value) > 8 else _MASK
+
+
+def is_masked(value: str | None) -> bool:
+    """Return True if value looks like a masked secret — should not be written back to DB."""
+    if not value:
+        return True
+    if value == _MASK:
+        return True
+    # Matches the "xxxx…xxxx" format produced by mask()
+    if len(value) == 9 and value[4] == "…":
+        return True
+    return False
 
 
 async def get_all(db: AsyncSession) -> dict[str, Any]:

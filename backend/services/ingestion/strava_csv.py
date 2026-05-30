@@ -17,16 +17,19 @@ from services.ingestion.base import IngestResult, NormalizedWorkout
 logger = logging.getLogger(__name__)
 
 _ACTIVITY_TYPE_MAP: dict[str, WorkoutTypeEnum] = {
-    "run":          WorkoutTypeEnum.running,
-    "ride":         WorkoutTypeEnum.cycling,
-    "virtualride":  WorkoutTypeEnum.cycling,
-    "walk":         WorkoutTypeEnum.walking,
-    "hike":         WorkoutTypeEnum.walking,
+    "run":            WorkoutTypeEnum.running,
+    "trailrun":       WorkoutTypeEnum.running,
+    "virtualrun":     WorkoutTypeEnum.running,
+    "ride":           WorkoutTypeEnum.cycling,
+    "virtualride":    WorkoutTypeEnum.cycling,
+    "ebikeride":      WorkoutTypeEnum.cycling,
+    "walk":           WorkoutTypeEnum.walking,
+    "hike":           WorkoutTypeEnum.walking,
     "weighttraining": WorkoutTypeEnum.strength,
-    "crossfit":     WorkoutTypeEnum.strength,
-    "workout":      WorkoutTypeEnum.strength,
-    "swim":         WorkoutTypeEnum.other,
-    "rowing":       WorkoutTypeEnum.other,
+    "crossfit":       WorkoutTypeEnum.strength,
+    "workout":        WorkoutTypeEnum.strength,
+    "swim":           WorkoutTypeEnum.other,
+    "rowing":         WorkoutTypeEnum.other,
 }
 
 _DATE_FMTS = [
@@ -87,7 +90,7 @@ def parse_csv_content(content: str) -> IngestResult:
         activity_id = (
             row.get("activity_id")
             or row.get("id")
-            or row.get("activity_id")
+            or row.get("activity_#")
             or ""
         )
         if not activity_id:

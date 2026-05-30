@@ -194,11 +194,12 @@ def _new_job() -> str:
     return job_id
 
 
-def _write_temp(upload: UploadFile, suffix: str) -> str:
+async def _write_temp(upload: UploadFile, suffix: str) -> str:
     tmp_dir = tempfile.mkdtemp()
     path = os.path.join(tmp_dir, f"upload{suffix}")
+    data = await upload.read()
     with open(path, "wb") as f:
-        f.write(upload.file.read())
+        f.write(data)
     return path
 
 
@@ -247,9 +248,10 @@ async def _run_import_job(job_id: str, file_path: str, source: str) -> None:
 async def import_apple_health(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
 ):
     suffix = ".zip" if (file.filename or "").lower().endswith(".zip") else ".xml"
-    path = _write_temp(file, suffix)
+    path = await _write_temp(file, suffix)
     job_id = _new_job()
     background_tasks.add_task(_run_import_job, job_id, path, "apple_health")
     return {"job_id": job_id}
@@ -259,8 +261,11 @@ async def import_apple_health(
 async def import_hevy(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
 ):
-    path = _write_temp(file, ".csv")
+    if not await svc.get_bool("hevy_enabled", db):
+        raise HTTPException(status_code=404, detail="Hevy integration not enabled")
+    path = await _write_temp(file, ".csv")
     job_id = _new_job()
     background_tasks.add_task(_run_import_job, job_id, path, "hevy")
     return {"job_id": job_id}
@@ -270,9 +275,12 @@ async def import_hevy(
 async def import_strava(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
 ):
+    if not await svc.get_bool("strava_enabled", db):
+        raise HTTPException(status_code=404, detail="Strava integration not enabled")
     suffix = ".zip" if (file.filename or "").lower().endswith(".zip") else ".csv"
-    path = _write_temp(file, suffix)
+    path = await _write_temp(file, suffix)
     job_id = _new_job()
     background_tasks.add_task(_run_import_job, job_id, path, "strava")
     return {"job_id": job_id}

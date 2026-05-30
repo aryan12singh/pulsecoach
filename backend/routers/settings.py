@@ -11,11 +11,6 @@ from services import settings_service as svc
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["settings"])
 
-_PLACEHOLDER = "***"
-
-
-def _is_placeholder(v: str | None) -> bool:
-    return v is None or v.startswith("***") or v == ""
 
 
 async def _build_response(db: AsyncSession) -> SettingsResponse:
@@ -66,7 +61,7 @@ async def update_settings(body: SettingsUpdate, db: AsyncSession = Depends(get_d
         ("webhook_secret", "webhook_secret"),
     ]:
         v = getattr(body, field)
-        if v is not None and not _is_placeholder(v):
+        if v is not None and not svc.is_masked(v):
             updates[key] = v
 
     for field, key in [
@@ -103,9 +98,13 @@ async def test_integration(integration: str, db: AsyncSession = Depends(get_db))
         return TestResult(ok=False, message=f"Hevy returned HTTP {r.status_code}")
 
     elif integration == "strava":
+        client_id = data.get("strava_client_id") or ""
+        client_secret = data.get("strava_client_secret") or ""
+        if not (client_id and client_secret):
+            return TestResult(ok=False, message="Strava client credentials not configured")
         from services.ingestion.strava import StravaAdapter
         try:
-            adapter = StravaAdapter(db)
+            adapter = StravaAdapter(db, client_id=client_id, client_secret=client_secret)
             token = await adapter._valid_access_token()
             if token:
                 return TestResult(ok=True, message="Strava OAuth token is valid")

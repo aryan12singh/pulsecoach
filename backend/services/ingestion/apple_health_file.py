@@ -7,6 +7,7 @@ hundreds-of-MB) file into memory.
 from __future__ import annotations
 
 import logging
+import os
 import zipfile
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -64,11 +65,8 @@ def _parse_dt(s: str) -> datetime:
         # "2024-03-15 08:00:00 +0800" → "2024-03-15T08:00:00+0800"
         parts = s.rsplit(" ", 1)
         s = parts[0].replace(" ", "T") + parts[1]
-    try:
-        dt = datetime.fromisoformat(s)
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-    except ValueError:
-        return datetime.now(tz=timezone.utc)
+    dt = datetime.fromisoformat(s)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 def _lb_to_kg(v: float) -> float:
@@ -91,15 +89,20 @@ class AppleHealthFileAdapter:
 
     def parse_file(self, file_path: str) -> IngestResult:
         """Parse export.zip or export.xml at file_path and return IngestResult."""
-        xml_path = file_path
+        if not file_path.lower().endswith(".zip"):
+            return self._parse_xml(file_path)
 
-        if file_path.lower().endswith(".zip"):
-            xml_path = self._extract_xml(file_path)
-
-        return self._parse_xml(xml_path)
+        xml_path = self._extract_xml(file_path)
+        try:
+            return self._parse_xml(xml_path)
+        finally:
+            try:
+                os.remove(xml_path)
+            except OSError:
+                pass
 
     def _extract_xml(self, zip_path: str) -> str:
-        import tempfile, os
+        import tempfile
         with zipfile.ZipFile(zip_path) as zf:
             names = zf.namelist()
             xml_entry = next(
@@ -108,9 +111,16 @@ class AppleHealthFileAdapter:
             )
             if not xml_entry:
                 raise ValueError("export.xml not found inside zip")
-            tmp = tempfile.mktemp(suffix=".xml")
-            with zf.open(xml_entry) as src, open(tmp, "wb") as dst:
-                dst.write(src.read())
+            fd, tmp = tempfile.mkstemp(suffix=".xml")
+            try:
+                with zf.open(xml_entry) as src, os.fdopen(fd, "wb") as dst:
+                    dst.write(src.read())
+            except Exception:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+                raise
         return tmp
 
     def _parse_xml(self, xml_path: str) -> IngestResult:
