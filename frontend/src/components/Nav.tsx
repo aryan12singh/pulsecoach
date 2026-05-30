@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import {
   Activity, LayoutDashboard, Dumbbell, TrendingUp, Target,
   BarChart3, Bot, Sun, Moon, Plus, RefreshCw, Menu, X,
-  Heart,
+  Heart, Zap,
   LucideIcon,
 } from "lucide-react";
 
@@ -105,6 +105,15 @@ export default function Nav() {
         </div>
 
         <div className="flex items-center gap-2">
+          {config?.strava_enabled && (
+            <a
+              href={api.strava.connectUrl()}
+              className="nav-desktop text-xs font-semibold text-accent hover:text-accent-graph transition-colors"
+            >
+              Connect Strava
+            </a>
+          )}
+
           {config?.hevy_enabled && (
             <button
               onClick={syncHevy}
@@ -185,6 +194,15 @@ export default function Nav() {
             >
               <RefreshCw size={18} /> Sync Hevy
             </button>
+          )}
+          {config?.strava_enabled && (
+            <a
+              href={api.strava.connectUrl()}
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-3 px-3.5 py-3 rounded-md text-sm font-semibold text-muted hover:text-text hover:bg-surface-2 transition-colors"
+            >
+              <Zap size={18} /> Connect Strava
+            </a>
           )}
         </div>
       )}
