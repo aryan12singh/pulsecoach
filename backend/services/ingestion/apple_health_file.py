@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import zipfile
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -114,7 +115,7 @@ class AppleHealthFileAdapter:
             fd, tmp = tempfile.mkstemp(suffix=".xml")
             try:
                 with zf.open(xml_entry) as src, os.fdopen(fd, "wb") as dst:
-                    dst.write(src.read())
+                    shutil.copyfileobj(src, dst)
             except Exception:
                 try:
                     os.remove(tmp)

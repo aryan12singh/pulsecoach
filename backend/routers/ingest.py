@@ -248,7 +248,6 @@ async def _run_import_job(job_id: str, file_path: str, source: str) -> None:
 async def import_apple_health(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
 ):
     suffix = ".zip" if (file.filename or "").lower().endswith(".zip") else ".xml"
     path = await _write_temp(file, suffix)

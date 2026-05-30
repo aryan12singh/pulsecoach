@@ -32,6 +32,19 @@ _MEASUREMENT_DATE_FMTS = [
     "%d %b %Y, %H:%M",
 ]
 
+# Hevy workout CSV timestamps vary by app version and locale
+_WORKOUT_DATE_FMTS = [
+    "%Y-%m-%d %H:%M:%S",       # "2024-05-24 09:30:00"
+    "%Y-%m-%dT%H:%M:%S",       # "2024-05-24T09:30:00"
+    "%d %b %Y, %H:%M:%S",      # "24 May 2024, 09:30:00"
+    "%d %b %Y, %H:%M",         # "24 May 2024, 09:30"
+    "%b %d, %Y, %I:%M:%S %p",  # "May 24, 2024, 9:30:00 AM"
+    "%b %d, %Y, %I:%M %p",     # "May 24, 2024, 9:30 AM"
+    "%b %d, %Y %I:%M %p",      # "May 24, 2024 9:30 AM"
+    "%m/%d/%Y %H:%M:%S",       # "05/24/2024 09:30:00"
+    "%m/%d/%Y %H:%M",          # "05/24/2024 09:30"
+]
+
 
 def _norm_headers(row: dict) -> dict[str, str]:
     return {k.strip().lower(): v for k, v in row.items()}
@@ -200,14 +213,18 @@ def _parse_measurement_csv(content: str) -> IngestResult:
 
 
 def _parse_hevy_dt(s: str) -> datetime:
-    """Parse Hevy workout CSV timestamps (ISO-like or locale-formatted)."""
+    """Parse Hevy workout CSV timestamps (ISO or locale-formatted)."""
     s = s.strip()
-    # Try ISO first
     try:
         dt = datetime.fromisoformat(s)
         return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
     except ValueError:
         pass
+    for fmt in _WORKOUT_DATE_FMTS:
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
     raise ValueError(f"Cannot parse Hevy datetime: {s!r}")
 
 

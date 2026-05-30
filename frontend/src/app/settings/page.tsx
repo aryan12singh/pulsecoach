@@ -205,11 +205,6 @@ export default function SettingsPage() {
     setDraft((d) => ({ ...d, ...update }));
   }
 
-  function val(key: keyof SettingsResponse): boolean | string | null {
-    if (key in draft) return (draft as Record<string, unknown>)[key] as string | null;
-    return settings?.[key] ?? null;
-  }
-
   function boolVal(key: keyof SettingsResponse): boolean {
     const d = (draft as Record<string, unknown>)[key];
     if (d !== undefined) return d as boolean;
