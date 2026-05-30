@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { api, handleError } from "@/lib/api";
-import type { ChatMessage } from "@/types";
+import type { AppConfig, ChatMessage } from "@/types";
 import { Send, Sparkles } from "lucide-react";
-import { Card, Badge, Button } from "@/components/ui";
+import { Card, Badge, Button, Skeleton, EmptyState } from "@/components/ui";
 import { Input } from "@/components/ui/FormFields";
 import { toast } from "sonner";
 
@@ -15,16 +15,23 @@ const SUGGESTIONS = [
 ];
 
 export default function CoachPage() {
+  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [configLoading, setConfigLoading] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    api.config().then(setConfig).catch((e) => handleError(e, "Failed to load config")).finally(() => setConfigLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!config?.coaching_enabled) return;
     api.coaching.history().then((h) => {
       setMessages([...h].reverse());
     }).catch((e) => handleError(e, "Failed to load coaching history"));
-  }, []);
+  }, [config]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -44,6 +51,24 @@ export default function CoachPage() {
       setSending(false);
     }
   }
+
+  if (configLoading) return (
+    <div className="animate-fade-up" style={{ maxWidth: 760, margin: "0 auto" }}>
+      <Skeleton h={400} r={16} style={{ width: "100%" }} />
+    </div>
+  );
+
+  if (!config?.coaching_enabled) return (
+    <div className="animate-fade-up" style={{ maxWidth: 760, margin: "0 auto" }}>
+      <Card>
+        <EmptyState
+          icon={Sparkles}
+          title="Coaching disabled"
+          body="Contact your admin to enable AI coaching."
+        />
+      </Card>
+    </div>
+  );
 
   return (
     <div className="animate-fade-up" style={{ maxWidth: 760, margin: "0 auto" }}>

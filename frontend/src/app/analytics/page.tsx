@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api, handleError } from "@/lib/api";
-import type { AnalyticsSummary, StrengthProgressPoint } from "@/types";
+import type { AppConfig, AnalyticsSummary, StrengthProgressPoint } from "@/types";
 import { fmt } from "@/lib/fmt";
-import { Trophy, Dumbbell, Activity, ShieldCheck } from "lucide-react";
+import { Trophy, Dumbbell, Activity, ShieldCheck, BarChart3 } from "lucide-react";
 import { Card, Segmented, Skeleton, Badge, EmptyState } from "@/components/ui";
 import { Select } from "@/components/ui/FormFields";
 import LineChart from "@/components/charts/LineChart";
@@ -32,6 +32,8 @@ const SEV_COLOR: Record<string, string> = {
 };
 
 export default function AnalyticsPage() {
+  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [configLoading, setConfigLoading] = useState(true);
   const [range, setRange] = useState(30);
   const [data, setData] = useState<AnalyticsSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,15 +43,20 @@ export default function AnalyticsPage() {
   const [progLoading, setProgLoading] = useState(false);
 
   useEffect(() => {
+    api.config().then(setConfig).catch((e) => handleError(e, "Failed to load config")).finally(() => setConfigLoading(false));
+  }, []);
+
+  useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const ex = p.get("exercise");
     if (ex) setExercise(ex);
   }, []);
 
   useEffect(() => {
+    if (!config?.analytics_enabled) return;
     setLoading(true);
     api.analytics.summary(range).then(setData).catch((e) => handleError(e, "Failed to load analytics")).finally(() => setLoading(false));
-  }, [range]);
+  }, [range, config]);
 
   // Derive exercise names from PRs
   const exerciseNames = data?.prs.map((p) => p.exercise_name) || [];
@@ -65,6 +72,37 @@ export default function AnalyticsPage() {
     setProgLoading(true);
     api.strength.progress(exercise).then(setProg).catch((e) => { handleError(e, "Failed to load strength progression"); setProg([]); }).finally(() => setProgLoading(false));
   }, [exercise]);
+
+  if (configLoading) {
+    return (
+      <div className="animate-fade-up">
+        <div className="mb-6">
+          <h1 className="font-display font-semibold text-[30px] tracking-[-0.02em]">Analytics</h1>
+        </div>
+        <div className="grid-2-1">
+          <Skeleton h={320} r={16} />
+          <Skeleton h={320} r={16} />
+        </div>
+      </div>
+    );
+  }
+
+  if (!config?.analytics_enabled) {
+    return (
+      <div className="animate-fade-up">
+        <div className="mb-6">
+          <h1 className="font-display font-semibold text-[30px] tracking-[-0.02em]">Analytics</h1>
+        </div>
+        <Card>
+          <EmptyState
+            icon={BarChart3}
+            title="Analytics disabled"
+            body="Contact your admin to enable analytics."
+          />
+        </Card>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
