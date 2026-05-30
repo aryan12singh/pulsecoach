@@ -16,6 +16,8 @@ import LineChart from "@/components/charts/LineChart";
 import Sparkline from "@/components/charts/Sparkline";
 import { useCountUp } from "@/hooks/useCountUp";
 
+type MetricsByType = Record<string, HealthMetric[]>;
+
 /* ---------- Dashboard prefs ---------- */
 interface DashPrefs {
   density: "focused" | "dense";
@@ -56,7 +58,7 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<WeeklySummary | null>(null);
   const [goals, setGoals] = useState<GoalStatus[]>([]);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [metricsByType, setMetricsByType] = useState<Record<string, HealthMetric[]>>({});
+  const [metricsByType, setMetricsByType] = useState<MetricsByType>({});
   const [prefs, setPrefs] = useState<DashPrefs>(DEFAULT_PREFS);
   const [customizing, setCustomizing] = useState(false);
 
@@ -268,7 +270,7 @@ function DenseView({
   workouts: Workout[];
   goals: GoalStatus[];
   show: DashPrefs["cards"];
-  metricsByType: Record<string, HealthMetric[]>;
+  metricsByType: MetricsByType;
 }) {
   const kpis: Array<{
     label: string; value: number | null; unit: string;

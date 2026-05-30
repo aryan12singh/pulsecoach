@@ -1,4 +1,5 @@
 "use client";
+import { useState, useEffect } from "react";
 
 interface SparklineProps {
   data: Array<{ value: number } | number>;
@@ -15,6 +16,13 @@ export default function Sparkline({
   height = 32,
   area = true,
 }: SparklineProps) {
+  const [drawn, setDrawn] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDrawn(true), 40);
+    return () => clearTimeout(t);
+  }, []);
+
   if (!data || data.length < 2) return null;
 
   const vals = data.map((d) => (typeof d === "number" ? d : d.value));
@@ -31,7 +39,8 @@ export default function Sparkline({
         <path
           d={`${line} L${width},${height} L0,${height} Z`}
           fill={color}
-          opacity="0.12"
+          opacity={drawn ? 0.12 : 0}
+          style={{ transition: "opacity 0.6s ease 0.3s" }}
         />
       )}
       <path
@@ -41,12 +50,18 @@ export default function Sparkline({
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
+        pathLength={1}
+        strokeDasharray="1"
+        strokeDashoffset={drawn ? 0 : 1}
+        style={{ transition: "stroke-dashoffset 0.8s cubic-bezier(0.4,0,0.2,1)" }}
       />
       <circle
         cx={x(vals.length - 1)}
         cy={y(vals[vals.length - 1])}
         r="2.6"
         fill={color}
+        opacity={drawn ? 1 : 0}
+        style={{ transition: "opacity 0.3s ease 0.8s" }}
       />
     </svg>
   );
