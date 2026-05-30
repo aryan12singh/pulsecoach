@@ -168,6 +168,18 @@ class OAuthToken(Base):
     )
 
 
+class AppSetting(Base):
+    """Key-value store for runtime configuration. Seeded from env on first start."""
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_secret: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class CoachingSession(Base):
     __tablename__ = "coaching_sessions"
 

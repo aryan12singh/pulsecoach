@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import {
   Activity, LayoutDashboard, Dumbbell, TrendingUp, Target,
   BarChart3, Bot, Sun, Moon, Plus, RefreshCw, Menu, X,
-  Heart, Zap,
+  Heart, Zap, Settings,
   LucideIcon,
 } from "lucide-react";
 
@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/goals", label: "Goals", icon: Target, id: "goals" },
   { href: "/analytics", label: "Analytics", icon: BarChart3, id: "analytics" },
   { href: "/coach", label: "Coach", icon: Bot, id: "coach", flag: "coaching_enabled" as const },
+  { href: "/settings", label: "Settings", icon: Settings, id: "settings" },
 ];
 
 export default function Nav() {

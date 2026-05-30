@@ -227,3 +227,36 @@ class AppConfig(BaseModel):
     hevy_enabled: bool
     strava_enabled: bool
     analytics_enabled: bool = True
+
+
+# ── Settings ───────────────────────────────────────────────────────────────────
+
+class SettingsResponse(BaseModel):
+    hevy_enabled: bool
+    hevy_api_key: str | None       # masked if set
+    strava_enabled: bool
+    strava_client_id: str | None
+    strava_client_secret: str | None  # masked if set
+    strava_redirect_uri: str
+    coaching_enabled: bool
+    anthropic_api_key: str | None  # masked if set
+    claude_model: str | None
+    webhook_secret: str | None     # masked if set
+
+
+class SettingsUpdate(BaseModel):
+    hevy_enabled: bool | None = None
+    hevy_api_key: str | None = None
+    strava_enabled: bool | None = None
+    strava_client_id: str | None = None
+    strava_client_secret: str | None = None
+    strava_redirect_uri: str | None = None
+    coaching_enabled: bool | None = None
+    anthropic_api_key: str | None = None
+    claude_model: str | None = None
+    webhook_secret: str | None = None
+
+
+class TestResult(BaseModel):
+    ok: bool
+    message: str
