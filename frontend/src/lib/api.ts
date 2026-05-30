@@ -1,7 +1,7 @@
 import type {
   AppConfig, AnalyticsSummary, ChatMessage, GoalStatus, HealthMetric, MonthlySummary,
   MetricSummaryItem, StrengthProgressPoint, Workout, WorkoutDetail,
-  WeeklySummary, Goal,
+  WeeklySummary, Goal, SettingsResponse, SettingsUpdate, TestResult, ImportJob,
 } from "@/types";
 import { toast } from "sonner";
 
@@ -46,6 +46,14 @@ async function put<T>(path: string, body: unknown): Promise<T> {
 async function del(path: string): Promise<void> {
   const res = await fetch(BASE + path, { method: "DELETE" });
   if (!res.ok && res.status !== 204) throw new Error(`DELETE ${path} → ${res.status}`);
+}
+
+async function _postFile<T = { job_id: string }>(path: string, fieldName: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append(fieldName, file);
+  const res = await fetch(BASE + path, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`POST ${path} → ${res.status}`);
+  return res.json();
 }
 
 export const api = {
@@ -94,5 +102,19 @@ export const api = {
   analytics: {
     summary: (windowDays = 30) =>
       get<AnalyticsSummary>("/analytics/summary", { window_days: String(windowDays) }),
+  },
+
+  settings: {
+    get: () => get<SettingsResponse>("/settings"),
+    update: (body: SettingsUpdate) => put<SettingsResponse>("/settings", body),
+    test: (integration: string) =>
+      post<TestResult>(`/settings/test/${integration}`, {}),
+  },
+
+  ingest: {
+    importAppleHealth: (file: File) => _postFile<{ job_id: string }>("/ingest/apple-health/import", "file", file),
+    importHevy: (file: File) => _postFile<{ job_id: string }>("/ingest/hevy/import", "file", file),
+    importStrava: (file: File) => _postFile<{ job_id: string }>("/ingest/strava/import", "file", file),
+    jobStatus: (id: string) => get<ImportJob>(`/ingest/jobs/${id}`),
   },
 };

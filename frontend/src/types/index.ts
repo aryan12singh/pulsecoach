@@ -152,3 +152,51 @@ export interface AnalyticsSummary {
   overtraining: OvertrainingFlag[];
   window_days: number;
 }
+
+export interface SettingsResponse {
+  hevy_enabled: boolean;
+  hevy_api_key: string | null;
+  strava_enabled: boolean;
+  strava_client_id: string | null;
+  strava_client_secret: string | null;
+  strava_redirect_uri: string;
+  coaching_enabled: boolean;
+  anthropic_api_key: string | null;
+  claude_model: string | null;
+  webhook_secret: string | null;
+}
+
+export interface SettingsUpdate {
+  hevy_enabled?: boolean;
+  hevy_api_key?: string;
+  strava_enabled?: boolean;
+  strava_client_id?: string;
+  strava_client_secret?: string;
+  strava_redirect_uri?: string;
+  coaching_enabled?: boolean;
+  anthropic_api_key?: string;
+  claude_model?: string;
+  webhook_secret?: string;
+}
+
+export interface TestResult {
+  ok: boolean;
+  message: string;
+}
+
+export type JobStatus = "pending" | "running" | "done" | "error";
+
+export interface ImportJobResult {
+  workouts_added: number;
+  workouts_skipped_dupe: number;
+  sets_added: number;
+  metrics_added: number;
+  errors: string[];
+}
+
+export interface ImportJob {
+  status: JobStatus;
+  progress: number;
+  result: ImportJobResult | null;
+  error: string | null;
+}

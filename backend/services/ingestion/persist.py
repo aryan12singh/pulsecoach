@@ -18,6 +18,7 @@ class UpsertCounts:
     workouts_inserted: int = 0
     workouts_updated: int = 0
     workouts_skipped: int = 0
+    sets_inserted: int = 0
     metrics_inserted: int = 0
     metrics_skipped: int = 0
 
@@ -41,6 +42,7 @@ async def upsert(result: IngestResult, db: AsyncSession) -> UpsertCounts:
             )
             for s in sets:
                 db.add(StrengthSet(workout_id=workout_id, **s.model_dump()))
+            counts.sets_inserted += len(sets)
             await db.execute(
                 Workout.__table__.update()
                 .where(Workout.id == workout_id)
