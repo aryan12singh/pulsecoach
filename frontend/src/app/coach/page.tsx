@@ -2,93 +2,186 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { ChatMessage } from "@/types";
+import { Send, Sparkles } from "lucide-react";
+import { Card, Badge, Button } from "@/components/ui";
+import { Input } from "@/components/ui/FormFields";
+import { toast } from "sonner";
+
+const SUGGESTIONS = [
+  "Give me my weekly check-in",
+  "How\u2019s my sleep?",
+  "Should I take a deload week?",
+  "How\u2019s my bench progressing?",
+];
 
 export default function CoachPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api.coaching.history().then((h) => {
-      const sorted = [...h].reverse();
-      setMessages(sorted);
-      // Auto weekly check-in if no history
-      if (sorted.length === 0) {
-        send("Give me my weekly check-in");
-      }
+      setMessages([...h].reverse());
     }).catch(() => {});
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, sending]);
 
   async function send(text: string) {
     if (!text.trim() || sending) return;
     setSending(true);
+    setInput("");
     try {
       const msg = await api.coaching.chat(text);
       setMessages((m) => [...m, msg]);
     } catch {
-      alert("Coaching request failed — check that ENABLE_COACHING and ANTHROPIC_API_KEY are set.");
+      toast.error("Coaching request failed \u2014 check that coaching is enabled.");
     } finally {
       setSending(false);
-      setInput("");
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    await send(input);
-  }
-
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
-      <h1 className="text-2xl font-bold text-gray-900">Coach</h1>
-
-      <div className="bg-white rounded-xl shadow-sm p-5 space-y-5 min-h-[400px] max-h-[600px] overflow-y-auto">
-        {messages.map((m) => (
-          <div key={m.id} className="space-y-3">
-            <div className="flex justify-end">
-              <div className="bg-indigo-600 text-white text-sm px-4 py-2.5 rounded-2xl rounded-tr-sm max-w-xs">
-                {m.user_message}
-              </div>
-            </div>
-            <div className="flex justify-start">
-              <div className="bg-gray-100 text-gray-800 text-sm px-4 py-2.5 rounded-2xl rounded-tl-sm max-w-prose whitespace-pre-wrap">
-                {m.ai_response}
-              </div>
-            </div>
-          </div>
-        ))}
-        {sending && (
-          <div className="flex justify-start">
-            <div className="bg-gray-100 text-gray-400 text-sm px-4 py-2.5 rounded-2xl rounded-tl-sm animate-pulse">
-              Thinking…
-            </div>
-          </div>
-        )}
-        <div ref={bottomRef} />
+    <div className="animate-fade-up" style={{ maxWidth: 760, margin: "0 auto" }}>
+      <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
+        <div>
+          <h1 className="font-display font-semibold text-[30px] tracking-[-0.02em]">Coach</h1>
+        </div>
+        <Badge tone="accent" dot>AI enabled</Badge>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask your coach…"
-          disabled={sending}
-          className="flex-1 border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
-        />
-        <button
-          type="submit"
-          disabled={sending || !input.trim()}
-          className="bg-indigo-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-50"
+      <Card pad={false} style={{ display: "flex", flexDirection: "column", height: "min(64vh, 560px)" }}>
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto p-[22px] flex flex-col gap-[18px]"
         >
-          Send
-        </button>
-      </form>
+          {/* AI header */}
+          <div className="flex items-center gap-3 pb-1.5">
+            <span
+              className="w-[34px] h-[34px] rounded-[11px] grid place-items-center"
+              style={{ background: "var(--accent)", color: "var(--on-accent)" }}
+            >
+              <Sparkles size={17} />
+            </span>
+            <div>
+              <div className="font-display font-semibold text-sm">PulseCoach AI</div>
+              <div className="text-muted text-xs">Trained on your last 30 days of data</div>
+            </div>
+          </div>
+
+          {/* Messages */}
+          {messages.map((m) => (
+            <div key={m.id} className="flex flex-col gap-3">
+              {/* User bubble */}
+              <div className="self-end max-w-[78%]">
+                <div
+                  className="text-sm font-medium"
+                  style={{
+                    background: "var(--accent)",
+                    color: "var(--on-accent)",
+                    padding: "11px 15px",
+                    borderRadius: "16px 16px 4px 16px",
+                  }}
+                >
+                  {m.user_message}
+                </div>
+              </div>
+              {/* AI bubble */}
+              <div className="self-start max-w-[88%]">
+                <div
+                  className="text-sm leading-relaxed whitespace-pre-wrap"
+                  style={{
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text)",
+                    padding: "13px 16px",
+                    borderRadius: "16px 16px 16px 4px",
+                  }}
+                >
+                  {m.ai_response}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* Typing indicator */}
+          {sending && (
+            <div className="self-start">
+              <div
+                className="flex items-center gap-2 text-muted text-sm"
+                style={{
+                  background: "var(--surface-2)",
+                  border: "1px solid var(--border)",
+                  padding: "13px 16px",
+                  borderRadius: "16px 16px 16px 4px",
+                }}
+              >
+                <TypingDots /> Thinking&hellip;
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Input area */}
+        <div style={{ borderTop: "1px solid var(--border)", padding: 16 }}>
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                className="px-3 py-1.5 rounded-full text-xs font-medium bg-surface-2 border border-border text-muted hover:text-text hover:border-text/20 transition-colors cursor-pointer disabled:opacity-40"
+                onClick={() => send(s)}
+                disabled={sending}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(e) => { e.preventDefault(); send(input); }}
+          >
+            <Input
+              placeholder="Ask your coach\u2026"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              disabled={sending}
+              style={{ flex: 1 }}
+            />
+            <Button
+              type="submit"
+              variant="primary"
+              icon={Send}
+              disabled={sending || !input.trim()}
+            >
+              Send
+            </Button>
+          </form>
+        </div>
+      </Card>
     </div>
+  );
+}
+
+function TypingDots() {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="block rounded-full"
+          style={{
+            width: 6,
+            height: 6,
+            background: "var(--muted)",
+            animation: `blink 1.2s ${i * 0.18}s infinite`,
+          }}
+        />
+      ))}
+      <style>{`@keyframes blink{0%,60%,100%{opacity:.25}30%{opacity:1}}`}</style>
+    </span>
   );
 }
