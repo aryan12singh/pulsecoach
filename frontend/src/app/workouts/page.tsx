@@ -242,6 +242,7 @@ function WorkoutFormModal({ open, onClose, onSaved }: { open: boolean; onClose: 
                   />
                   <button
                     type="button"
+                    aria-label="Remove set"
                     className="p-2 rounded-md text-muted hover:text-danger hover:bg-surface-2 transition-colors"
                     onClick={() => setSets((prev) => prev.filter((_, idx) => idx !== i))}
                   >

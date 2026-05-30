@@ -98,6 +98,16 @@ export default function CoachPage() {
             </div>
           </div>
 
+          {/* Empty state */}
+          {messages.length === 0 && !sending && (
+            <div className="flex-1 flex items-center justify-center text-center py-8">
+              <div>
+                <div className="text-muted text-sm">No conversations yet.</div>
+                <div className="text-faint text-xs mt-1">Ask a question or pick a suggestion below.</div>
+              </div>
+            </div>
+          )}
+
           {/* Messages */}
           {messages.map((m) => (
             <div key={m.id} className="flex flex-col gap-3">
