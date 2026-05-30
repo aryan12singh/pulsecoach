@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class UpsertCounts:
     workouts_inserted: int = 0
+    workouts_updated: int = 0
     workouts_skipped: int = 0
     metrics_inserted: int = 0
     metrics_skipped: int = 0
@@ -25,8 +26,11 @@ async def upsert(result: IngestResult, db: AsyncSession) -> UpsertCounts:
     counts = UpsertCounts()
 
     for nw in result.workouts:
-        workout_id = await _upsert_workout(nw, db)
-        counts.workouts_inserted += 1
+        workout_id, was_new = await _upsert_workout(nw, db)
+        if was_new:
+            counts.workouts_inserted += 1
+        else:
+            counts.workouts_updated += 1
 
         # Attach strength sets if any
         key = nw.external_id or f"{nw.source}_{nw.start_at.isoformat()}_{nw.workout_type}"
@@ -54,8 +58,8 @@ async def upsert(result: IngestResult, db: AsyncSession) -> UpsertCounts:
     return counts
 
 
-async def _upsert_workout(nw: NormalizedWorkout, db: AsyncSession) -> int | None:
-    """Insert or update a workout. Returns the workout id."""
+async def _upsert_workout(nw: NormalizedWorkout, db: AsyncSession) -> tuple[int | None, bool]:
+    """Insert or update a workout. Returns (workout id, was_newly_inserted)."""
     # Find existing by (source, external_id) or (source, start_at, workout_type)
     if nw.external_id:
         stmt = select(Workout).where(
@@ -77,12 +81,12 @@ async def _upsert_workout(nw: NormalizedWorkout, db: AsyncSession) -> int | None
         for k, v in data.items():
             setattr(existing, k, v)
         await db.flush()
-        return existing.id
+        return existing.id, False
     else:
         workout = Workout(**data)
         db.add(workout)
         await db.flush()
-        return workout.id
+        return workout.id, True
 
 
 async def _upsert_metric(nm: NormalizedMetric, db: AsyncSession) -> bool:

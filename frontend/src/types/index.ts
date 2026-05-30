@@ -119,4 +119,36 @@ export interface ChatMessage {
 export interface AppConfig {
   coaching_enabled: boolean;
   hevy_enabled: boolean;
+  strava_enabled: boolean;
+  analytics_enabled: boolean;
+}
+
+export interface ExercisePR {
+  exercise_name: string;
+  best_weight: number;
+  best_weight_unit: string;
+  best_weight_date: string;
+  best_est_1rm: number;
+  best_est_1rm_date: string;
+  is_recent_pr: boolean;
+}
+
+export interface MuscleVolume {
+  muscle_group: string;
+  total_volume: number;
+  sets_count: number;
+}
+
+export interface OvertrainingFlag {
+  metric: string;
+  level: "ok" | "caution" | "high";
+  value: number;
+  message: string;
+}
+
+export interface AnalyticsSummary {
+  prs: ExercisePR[];
+  muscle_volume: MuscleVolume[];
+  overtraining: OvertrainingFlag[];
+  window_days: number;
 }

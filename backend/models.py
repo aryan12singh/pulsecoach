@@ -151,6 +151,23 @@ class Goal(Base):
     )
 
 
+class OAuthToken(Base):
+    """Single-user OAuth token storage (one row per provider, e.g. 'strava')."""
+    __tablename__ = "oauth_tokens"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    provider: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    access_token: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scope: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class CoachingSession(Base):
     __tablename__ = "coaching_sessions"
 

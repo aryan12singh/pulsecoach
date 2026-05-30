@@ -1,140 +1,253 @@
 "use client";
-import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
-import GoalProgressBar from "@/components/GoalProgressBar";
+import { useEffect, useState, useMemo } from "react";
+import { api, handleError } from "@/lib/api";
 import type { GoalStatus, Comparison, Window, MetricScope } from "@/types";
+import { Plus, Target, Check, Activity, Trash2 } from "lucide-react";
+import { Card, Skeleton, Button, Modal, EmptyState } from "@/components/ui";
+import { Field, Input, Select } from "@/components/ui/FormFields";
+import Stat from "@/components/ui/Stat";
+import GoalCard, { goalLabel } from "@/components/GoalCard";
+import { toast } from "sonner";
 
-const BLANK = {
-  goal_type: "",
-  metric_scope: "workout" as MetricScope,
-  target_value: 0,
-  target_unit: "",
-  comparison: "gte" as Comparison,
-  window: "weekly" as Window,
-  deadline: "",
-  notes: "",
-};
+const GOAL_TYPES = [
+  { key: "sessions_per_week", label: "Sessions / week", scope: "workout" as MetricScope, unit: "sessions", cmp: "gte" as Comparison, window: "weekly" as Window },
+  { key: "total_volume_weekly", label: "Weekly strength volume", scope: "strength" as MetricScope, unit: "kg\u00B7reps", cmp: "gte" as Comparison, window: "weekly" as Window },
+  { key: "weight_target", label: "Body weight target", scope: "health_metric" as MetricScope, unit: "kg", cmp: "lte" as Comparison, window: "all_time" as Window },
+  { key: "sleep_avg_hours", label: "Average sleep", scope: "health_metric" as MetricScope, unit: "hrs", cmp: "gte" as Comparison, window: "weekly" as Window },
+];
 
 export default function GoalsPage() {
   const [goals, setGoals] = useState<GoalStatus[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ ...BLANK });
-  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<GoalStatus | null>(null);
+  const [confirm, setConfirm] = useState<GoalStatus | null>(null);
 
-  const load = () => api.goals.list().then(setGoals).catch(() => {});
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("action") === "new" || p.get("action") === "add") setShowForm(true);
+  }, []);
+
+  const load = () => {
+    setLoading(true);
+    api.goals.list().then(setGoals).catch((e) => handleError(e, "Failed to load goals")).finally(() => setLoading(false));
+  };
 
   useEffect(() => { load(); }, []);
 
-  function field(k: string, v: unknown) {
-    setForm((f) => ({ ...f, [k]: v }));
+  const summary = useMemo(() => {
+    const done = goals.filter((g) => g.status === "completed").length;
+    const avg = goals.length ? Math.round(goals.reduce((s, g) => s + g.percentage_complete, 0) / goals.length) : 0;
+    return { done, avg, total: goals.length };
+  }, [goals]);
+
+  function openEdit(g: GoalStatus) {
+    setEditing(g);
+    setShowForm(true);
+  }
+
+  async function handleDelete() {
+    if (!confirm) return;
+    try {
+      await api.goals.delete(confirm.id);
+      toast.success("Goal deleted");
+      setConfirm(null);
+      load();
+    } catch {
+      toast.error("Failed to delete goal");
+    }
+  }
+
+  return (
+    <div className="animate-fade-up">
+      <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
+        <div>
+          <h1 className="font-display font-semibold text-[30px] tracking-[-0.02em]">Goals</h1>
+          <p className="text-muted text-sm mt-1.5">Targets across training, strength & health</p>
+        </div>
+        <Button variant="primary" icon={Plus} onClick={() => { setEditing(null); setShowForm(true); }}>Add goal</Button>
+      </div>
+
+      {loading ? (
+        <div className="grid-2">
+          {[0, 1, 2, 3].map((i) => <Skeleton key={i} h={150} r={16} />)}
+        </div>
+      ) : goals.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={Target}
+            title="No active goals"
+            body="Set a target to start tracking your progress — sessions per week, strength volume, body weight, or sleep."
+            action={<Button variant="primary" icon={Plus} onClick={() => { setEditing(null); setShowForm(true); }}>Add your first goal</Button>}
+          />
+        </Card>
+      ) : (
+        <>
+          <div className="grid-3 mb-5">
+            <Card><Stat label="Active goals" value={summary.total} icon={Target} animate={false} /></Card>
+            <Card><Stat label="Completed" value={summary.done} icon={Check} animate={false} /></Card>
+            <Card><Stat label="Avg progress" value={summary.avg} unit="%" icon={Activity} /></Card>
+          </div>
+          <div className="grid-2 stagger">
+            {goals.map((g) => (
+              <GoalCard key={g.id} g={g} onEdit={openEdit} onDelete={setConfirm} />
+            ))}
+          </div>
+        </>
+      )}
+
+      <GoalFormModal
+        open={showForm}
+        editing={editing}
+        onClose={() => { setShowForm(false); setEditing(null); }}
+        onSaved={load}
+      />
+
+      <Modal
+        open={!!confirm}
+        onClose={() => setConfirm(null)}
+        title="Delete goal?"
+        footer={
+          <>
+            <Button onClick={() => setConfirm(null)}>Cancel</Button>
+            <Button variant="danger" icon={Trash2} onClick={handleDelete}>Delete</Button>
+          </>
+        }
+      >
+        <p className="text-muted text-sm">
+          This will remove &ldquo;{confirm && goalLabel(confirm)}&rdquo; from your tracked goals. You can always create it again.
+        </p>
+      </Modal>
+    </div>
+  );
+}
+
+/* ---------- Goal form modal ---------- */
+function GoalFormModal({ open, editing, onClose, onSaved }: {
+  open: boolean;
+  editing: GoalStatus | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [f, setF] = useState(init(null));
+  const [saving, setSaving] = useState(false);
+
+  function init(ed: GoalStatus | null) {
+    if (ed) return {
+      goal_type: ed.goal_type,
+      target_value: String(ed.target_value),
+      target_unit: ed.target_unit,
+      comparison: ed.comparison,
+      window: ed.window,
+      metric_scope: ed.metric_scope,
+      deadline: ed.deadline || "",
+      notes: ed.notes || "",
+    };
+    const d = GOAL_TYPES[0];
+    return {
+      goal_type: d.key,
+      target_value: "",
+      target_unit: d.unit,
+      comparison: d.cmp,
+      window: d.window,
+      metric_scope: d.scope,
+      deadline: "",
+      notes: "",
+    };
+  }
+
+  useEffect(() => {
+    if (open) setF(init(editing));
+  }, [open, editing]);
+
+  const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+
+  function pickType(key: string) {
+    const d = GOAL_TYPES.find((g) => g.key === key)!;
+    setF((s) => ({ ...s, goal_type: key, target_unit: d.unit, comparison: d.cmp, window: d.window, metric_scope: d.scope }));
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!f.target_value) return;
     setSaving(true);
     try {
-      await api.goals.create({
-        ...form,
-        target_value: Number(form.target_value),
-        deadline: form.deadline || null,
-      });
-      setForm({ ...BLANK });
-      setShowForm(false);
-      await load();
+      const body = {
+        goal_type: f.goal_type,
+        metric_scope: f.metric_scope,
+        target_value: Number(f.target_value),
+        target_unit: f.target_unit,
+        comparison: f.comparison,
+        window: f.window,
+        deadline: f.deadline || null,
+        notes: f.notes || null,
+      };
+      if (editing) {
+        await api.goals.update(editing.id, body);
+        toast.success("Goal updated");
+      } else {
+        await api.goals.create(body);
+        toast.success("Goal created");
+      }
+      onClose();
+      onSaved();
+    } catch {
+      toast.error("Failed to save goal");
     } finally {
       setSaving(false);
     }
   }
 
-  async function remove(id: number) {
-    await api.goals.delete(id);
-    await load();
-  }
-
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Goals</h1>
-        <button
-          onClick={() => setShowForm((s) => !s)}
-          className="bg-indigo-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-indigo-700"
-        >
-          {showForm ? "Cancel" : "+ Add Goal"}
-        </button>
-      </div>
-
-      {showForm && (
-        <form onSubmit={submit} className="bg-white rounded-xl shadow-sm p-6 space-y-4">
-          <h2 className="font-semibold text-gray-800">New Goal</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <label className="block">
-              <span className="text-xs text-gray-500">Goal type (e.g. sessions_per_week)</span>
-              <input required className="mt-1 block w-full border rounded-lg px-3 py-2 text-sm" value={form.goal_type} onChange={(e) => field("goal_type", e.target.value)} />
-            </label>
-            <label className="block">
-              <span className="text-xs text-gray-500">Scope</span>
-              <select className="mt-1 block w-full border rounded-lg px-3 py-2 text-sm bg-white" value={form.metric_scope} onChange={(e) => field("metric_scope", e.target.value)}>
-                <option value="workout">Workout</option>
-                <option value="strength">Strength</option>
-                <option value="health_metric">Health Metric</option>
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-xs text-gray-500">Target value</span>
-              <input required type="number" step="any" className="mt-1 block w-full border rounded-lg px-3 py-2 text-sm" value={form.target_value} onChange={(e) => field("target_value", e.target.value)} />
-            </label>
-            <label className="block">
-              <span className="text-xs text-gray-500">Unit</span>
-              <input required className="mt-1 block w-full border rounded-lg px-3 py-2 text-sm" value={form.target_unit} onChange={(e) => field("target_unit", e.target.value)} />
-            </label>
-            <label className="block">
-              <span className="text-xs text-gray-500">Comparison</span>
-              <select className="mt-1 block w-full border rounded-lg px-3 py-2 text-sm bg-white" value={form.comparison} onChange={(e) => field("comparison", e.target.value)}>
-                <option value="gte">≥ (at least)</option>
-                <option value="lte">≤ (at most)</option>
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-xs text-gray-500">Window</span>
-              <select className="mt-1 block w-full border rounded-lg px-3 py-2 text-sm bg-white" value={form.window} onChange={(e) => field("window", e.target.value)}>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-                <option value="all_time">All time</option>
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-xs text-gray-500">Deadline (optional)</span>
-              <input type="date" className="mt-1 block w-full border rounded-lg px-3 py-2 text-sm" value={form.deadline} onChange={(e) => field("deadline", e.target.value)} />
-            </label>
-            <label className="block">
-              <span className="text-xs text-gray-500">Notes</span>
-              <input className="mt-1 block w-full border rounded-lg px-3 py-2 text-sm" value={form.notes} onChange={(e) => field("notes", e.target.value)} />
-            </label>
-          </div>
-          <button type="submit" disabled={saving} className="bg-indigo-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50">
-            {saving ? "Saving…" : "Save Goal"}
-          </button>
-        </form>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {goals.map((g) => (
-          <div key={g.id} className="relative">
-            <GoalProgressBar goal={g} />
-            <button
-              onClick={() => remove(g.id)}
-              className="absolute top-4 right-4 text-xs text-gray-400 hover:text-red-500"
-            >
-              ✕
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {goals.length === 0 && !showForm && (
-        <p className="text-gray-500 text-sm">No active goals. Add one to start tracking.</p>
-      )}
-    </div>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={editing ? "Edit goal" : "New goal"}
+      wide
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" icon={Check} onClick={submit} disabled={!f.target_value || saving}>
+            {saving ? "Saving\u2026" : editing ? "Save changes" : "Create goal"}
+          </Button>
+        </>
+      }
+    >
+      <form onSubmit={submit} className="grid grid-cols-2 gap-4">
+        <div className="col-span-2">
+          <Field label="Goal type">
+            <Select value={f.goal_type} onChange={(e) => pickType(e.target.value)} disabled={!!editing}>
+              {GOAL_TYPES.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
+            </Select>
+          </Field>
+        </div>
+        <Field label="Target value">
+          <Input type="number" step="any" autoFocus value={f.target_value} onChange={(e) => set("target_value", e.target.value)} placeholder="0" />
+        </Field>
+        <Field label="Unit">
+          <Input value={f.target_unit} onChange={(e) => set("target_unit", e.target.value)} />
+        </Field>
+        <Field label="Comparison">
+          <Select value={f.comparison} onChange={(e) => set("comparison", e.target.value)}>
+            <option value="gte">&ge; at least</option>
+            <option value="lte">&le; at most</option>
+          </Select>
+        </Field>
+        <Field label="Window">
+          <Select value={f.window} onChange={(e) => set("window", e.target.value)}>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="all_time">All time</option>
+          </Select>
+        </Field>
+        <Field label="Deadline (optional)">
+          <Input type="date" value={f.deadline} onChange={(e) => set("deadline", e.target.value)} />
+        </Field>
+        <Field label="Notes (optional)">
+          <Input value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder="e.g. Summer cut" />
+        </Field>
+      </form>
+    </Modal>
   );
 }
