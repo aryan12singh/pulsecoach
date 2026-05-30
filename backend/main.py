@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import settings
 from database import AsyncSessionLocal
 from schemas import AppConfig
 
@@ -21,30 +20,26 @@ app = FastAPI(title="PulseCoach API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        settings.frontend_url,
         "http://localhost:3000",
         "http://localhost:3010",
         "http://frontend:3000",
+        "http://frontend:3010",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Always-on routers
-from routers import ingest, workouts, strength, metrics, goals, analytics, settings as settings_router
+from routers import ingest, workouts, strength, metrics, goals, analytics, coaching
+from routers import settings as settings_router
 app.include_router(ingest.router)
 app.include_router(workouts.router)
 app.include_router(strength.router)
 app.include_router(metrics.router)
 app.include_router(goals.router)
 app.include_router(analytics.router)
+app.include_router(coaching.router)
 app.include_router(settings_router.router)
-
-# Optional coaching router
-if settings.enable_coaching:
-    from routers import coaching
-    app.include_router(coaching.router)
 
 
 @app.get("/config", response_model=AppConfig)

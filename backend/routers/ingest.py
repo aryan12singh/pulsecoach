@@ -2,14 +2,13 @@ import logging
 import os
 import tempfile
 import uuid
-from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import settings
 from database import get_db, AsyncSessionLocal
+from services import settings_service as svc
 from services.ingestion.apple_health import AppleHealthAdapter
 from services.ingestion.persist import upsert
 
@@ -31,7 +30,34 @@ def _ingest_summary(counts) -> dict:
     }
 
 
-# ── Apple Health webhook (existing) ────────────────────────────────────────────
+# ── DB-backed guards ───────────────────────────────────────────────────────────
+
+async def _require_hevy(db: AsyncSession) -> str:
+    """Check Hevy is enabled in DB and return the API key."""
+    if not await svc.get_bool("hevy_enabled", db):
+        raise HTTPException(status_code=404, detail="Hevy integration not enabled")
+    api_key = await svc.get_str("hevy_api_key", db)
+    if not api_key:
+        raise HTTPException(status_code=503, detail="Hevy API key not configured")
+    return api_key
+
+
+async def _require_strava(db: AsyncSession) -> tuple[str, str, str]:
+    """Check Strava is enabled in DB and return (client_id, client_secret, redirect_uri)."""
+    if not await svc.get_bool("strava_enabled", db):
+        raise HTTPException(status_code=404, detail="Strava integration not enabled")
+    client_id = await svc.get_str("strava_client_id", db) or ""
+    client_secret = await svc.get_str("strava_client_secret", db) or ""
+    redirect_uri = (
+        await svc.get_str("strava_redirect_uri", db)
+        or "http://localhost:8010/ingest/strava/callback"
+    )
+    if not (client_id and client_secret):
+        raise HTTPException(status_code=503, detail="Strava client credentials not configured")
+    return client_id, client_secret, redirect_uri
+
+
+# ── Apple Health webhook ────────────────────────────────────────────────────────
 
 @router.post("/apple-health")
 async def ingest_apple_health(
@@ -40,9 +66,10 @@ async def ingest_apple_health(
     x_webhook_secret: str | None = Header(None),
 ):
     """Receive Health Auto Export push. Always returns 200."""
-    if settings.webhook_secret:
+    webhook_secret = await svc.get_str("webhook_secret", db)
+    if webhook_secret:
         secret = x_webhook_secret or request.query_params.get("secret")
-        if secret != settings.webhook_secret:
+        if secret != webhook_secret:
             logger.warning("Apple Health webhook: invalid secret")
             return {"status": "ok", "error": "invalid secret"}
 
@@ -65,18 +92,14 @@ async def ingest_apple_health(
         return {"status": "ok", "error": str(exc)}
 
 
-# ── Hevy API (existing) ─────────────────────────────────────────────────────────
+# ── Hevy API ────────────────────────────────────────────────────────────────────
 
 @router.post("/hevy/sync")
 async def sync_hevy(db: AsyncSession = Depends(get_db)):
     """On-demand pull from the Hevy API."""
-    if not settings.enable_hevy:
-        raise HTTPException(status_code=404, detail="Hevy integration not enabled")
-    if not settings.hevy_api_key:
-        raise HTTPException(status_code=503, detail="HEVY_API_KEY not configured")
-
+    api_key = await _require_hevy(db)
     from services.ingestion.hevy import HevyAdapter
-    adapter = HevyAdapter(settings.hevy_api_key)
+    adapter = HevyAdapter(api_key)
     result = await adapter.pull_and_normalize()
     counts = await upsert(result, db)
     return _ingest_summary(counts)
@@ -89,12 +112,13 @@ async def hevy_webhook(
     x_webhook_secret: str | None = Header(None),
 ):
     """Receive a Hevy workout push. Always returns 200 so Hevy won't retry."""
-    if not settings.enable_hevy:
+    if not await svc.get_bool("hevy_enabled", db):
         raise HTTPException(status_code=404, detail="Hevy integration not enabled")
 
-    if settings.webhook_secret:
+    webhook_secret = await svc.get_str("webhook_secret", db)
+    if webhook_secret:
         secret = x_webhook_secret or request.query_params.get("secret")
-        if secret != settings.webhook_secret:
+        if secret != webhook_secret:
             logger.warning("Hevy webhook: invalid secret")
             return {"status": "ok", "error": "invalid secret"}
 
@@ -104,12 +128,13 @@ async def hevy_webhook(
         logger.error("Hevy webhook: bad json — %s", exc)
         return {"status": "ok", "error": "invalid json"}
 
+    api_key = await svc.get_str("hevy_api_key", db) or ""
     from services.ingestion.hevy import HevyAdapter
-    adapter = HevyAdapter(settings.hevy_api_key or "")
+    adapter = HevyAdapter(api_key)
 
     try:
         workout_id = (payload.get("workout") or {}).get("id") or payload.get("id")
-        if workout_id and settings.hevy_api_key:
+        if workout_id and api_key:
             result = await adapter.fetch_one_and_normalize(str(workout_id))
         else:
             inline = payload.get("workouts") or ([payload["workout"]] if payload.get("workout") else [])
@@ -122,21 +147,14 @@ async def hevy_webhook(
         return {"status": "ok", "error": str(exc)}
 
 
-# ── Strava OAuth + polling (existing) ───────────────────────────────────────────
-
-def _require_strava() -> None:
-    if not settings.enable_strava:
-        raise HTTPException(status_code=404, detail="Strava integration not enabled")
-    if not (settings.strava_client_id and settings.strava_client_secret):
-        raise HTTPException(status_code=503, detail="Strava client credentials not configured")
-
+# ── Strava OAuth + polling ──────────────────────────────────────────────────────
 
 @router.get("/strava/connect")
-async def strava_connect():
+async def strava_connect(db: AsyncSession = Depends(get_db)):
     """Redirect the user to Strava's OAuth consent screen."""
-    _require_strava()
+    client_id, _, redirect_uri = await _require_strava(db)
     from services.ingestion.strava import authorize_url
-    return RedirectResponse(authorize_url())
+    return RedirectResponse(authorize_url(client_id, redirect_uri))
 
 
 @router.get("/strava/callback")
@@ -146,28 +164,29 @@ async def strava_callback(
     db: AsyncSession = Depends(get_db),
 ):
     """OAuth redirect target — exchanges the code for tokens, then returns to the UI."""
-    _require_strava()
+    client_id, client_secret, redirect_uri = await _require_strava(db)
+    frontend_url = await svc.get_str("frontend_url", db) or "http://localhost:3010"
     if error or not code:
-        return RedirectResponse(f"{settings.frontend_url}/trends?strava=error")
+        return RedirectResponse(f"{frontend_url}/trends?strava=error")
 
     from services.ingestion.strava import StravaAdapter
-    adapter = StravaAdapter(db)
+    adapter = StravaAdapter(db, client_id=client_id, client_secret=client_secret)
     await adapter.exchange_code(code)
-    return RedirectResponse(f"{settings.frontend_url}/trends?strava=connected")
+    return RedirectResponse(f"{frontend_url}/trends?strava=connected")
 
 
 @router.post("/strava/sync")
 async def strava_sync(db: AsyncSession = Depends(get_db)):
     """Pull recent activities from Strava and upsert them."""
-    _require_strava()
+    client_id, client_secret, _ = await _require_strava(db)
     from services.ingestion.strava import StravaAdapter
-    adapter = StravaAdapter(db)
+    adapter = StravaAdapter(db, client_id=client_id, client_secret=client_secret)
     result = await adapter.pull_and_normalize()
     counts = await upsert(result, db)
     return _ingest_summary(counts)
 
 
-# ── Bulk file import endpoints ──────────────────────────────────────────────────
+# ── Bulk file import ────────────────────────────────────────────────────────────
 
 def _new_job() -> str:
     job_id = str(uuid.uuid4())
@@ -178,7 +197,6 @@ def _new_job() -> str:
 def _write_temp(upload: UploadFile, suffix: str) -> str:
     tmp_dir = tempfile.mkdtemp()
     path = os.path.join(tmp_dir, f"upload{suffix}")
-    # Read synchronously — upload.file is a SpooledTemporaryFile
     with open(path, "wb") as f:
         f.write(upload.file.read())
     return path
@@ -191,8 +209,7 @@ async def _run_import_job(job_id: str, file_path: str, source: str) -> None:
         async with AsyncSessionLocal() as db:
             if source == "apple_health":
                 from services.ingestion.apple_health_file import AppleHealthFileAdapter
-                adapter = AppleHealthFileAdapter()
-                result = adapter.parse_file(file_path)
+                result = AppleHealthFileAdapter().parse_file(file_path)
             elif source == "hevy":
                 from services.ingestion.hevy_csv import parse_csv_file
                 with open(file_path, encoding="utf-8", errors="replace") as f:
@@ -210,7 +227,7 @@ async def _run_import_job(job_id: str, file_path: str, source: str) -> None:
         _jobs[job_id]["result"] = {
             "workouts_added": counts.workouts_inserted,
             "workouts_skipped_dupe": counts.workouts_updated,
-            "sets_added": getattr(counts, "sets_inserted", 0),
+            "sets_added": counts.sets_inserted,
             "metrics_added": counts.metrics_inserted,
             "errors": errors,
         }
@@ -231,7 +248,6 @@ async def import_apple_health(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ):
-    """Accept export.zip or export.xml from Apple Health and queue a background import."""
     suffix = ".zip" if (file.filename or "").lower().endswith(".zip") else ".xml"
     path = _write_temp(file, suffix)
     job_id = _new_job()
@@ -244,7 +260,6 @@ async def import_hevy(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ):
-    """Accept a Hevy workout CSV or measurements CSV and queue a background import."""
     path = _write_temp(file, ".csv")
     job_id = _new_job()
     background_tasks.add_task(_run_import_job, job_id, path, "hevy")
@@ -256,7 +271,6 @@ async def import_strava(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ):
-    """Accept Strava bulk export .zip or activities.csv and queue a background import."""
     suffix = ".zip" if (file.filename or "").lower().endswith(".zip") else ".csv"
     path = _write_temp(file, suffix)
     job_id = _new_job()

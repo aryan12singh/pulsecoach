@@ -6,13 +6,11 @@ hundreds-of-MB) file into memory.
 """
 from __future__ import annotations
 
-import io
 import logging
 import zipfile
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Generator
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from lxml import etree
 
