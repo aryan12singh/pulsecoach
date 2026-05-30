@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, handleError } from "@/lib/api";
 import type { AnalyticsSummary, StrengthProgressPoint } from "@/types";
 import { fmt } from "@/lib/fmt";
 import { Trophy, Dumbbell, Activity, ShieldCheck } from "lucide-react";
@@ -48,7 +48,7 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     setLoading(true);
-    api.analytics.summary(range).then(setData).finally(() => setLoading(false));
+    api.analytics.summary(range).then(setData).catch((e) => handleError(e, "Failed to load analytics")).finally(() => setLoading(false));
   }, [range]);
 
   // Derive exercise names from PRs
@@ -63,7 +63,7 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (!exercise) return;
     setProgLoading(true);
-    api.strength.progress(exercise).then(setProg).catch(() => setProg([])).finally(() => setProgLoading(false));
+    api.strength.progress(exercise).then(setProg).catch((e) => { handleError(e, "Failed to load strength progression"); setProg([]); }).finally(() => setProgLoading(false));
   }, [exercise]);
 
   if (loading) {

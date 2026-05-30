@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
-import { api } from "@/lib/api";
+import { api, handleError } from "@/lib/api";
 import type { Workout, WorkoutType, Source } from "@/types";
 import { Plus, Dumbbell } from "lucide-react";
 import { Card, Segmented, Skeleton, Button, Modal, EmptyState } from "@/components/ui";
@@ -28,7 +28,7 @@ export default function WorkoutsPage() {
     const params: Record<string, string> = { limit: "100" };
     if (type) params.type = type;
     if (source) params.source = source;
-    api.workouts.list(params).then(setWorkouts).finally(() => setLoading(false));
+    api.workouts.list(params).then(setWorkouts).catch((e) => handleError(e, "Failed to load workouts")).finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, [type, source]);

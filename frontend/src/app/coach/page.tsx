@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, handleError } from "@/lib/api";
 import type { ChatMessage } from "@/types";
 import { Send, Sparkles } from "lucide-react";
 import { Card, Badge, Button } from "@/components/ui";
@@ -23,7 +23,7 @@ export default function CoachPage() {
   useEffect(() => {
     api.coaching.history().then((h) => {
       setMessages([...h].reverse());
-    }).catch(() => {});
+    }).catch((e) => handleError(e, "Failed to load coaching history"));
   }, []);
 
   useEffect(() => {

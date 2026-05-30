@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
-import { api } from "@/lib/api";
+import { api, handleError } from "@/lib/api";
 import Link from "next/link";
 import { fmt } from "@/lib/fmt";
 import type { Workout, GoalStatus, HealthMetric, WeeklySummary } from "@/types";
@@ -63,13 +63,13 @@ export default function Dashboard() {
   useEffect(() => {
     setPrefs(loadPrefs());
     Promise.all([
-      api.workouts.weeklySummary().catch(() => null),
-      api.goals.list().catch(() => []),
-      api.workouts.list({ limit: "10" }).catch(() => []),
-      api.metrics.list({ type: "weight_kg", limit: "60" }).catch(() => []),
-      api.metrics.list({ type: "bmi", limit: "60" }).catch(() => []),
-      api.metrics.list({ type: "resting_hr", limit: "60" }).catch(() => []),
-      api.metrics.list({ type: "sleep_hours", limit: "60" }).catch(() => []),
+      api.workouts.weeklySummary().catch((e) => { handleError(e, "Failed to load weekly summary"); return null; }),
+      api.goals.list().catch((e) => { handleError(e, "Failed to load goals"); return []; }),
+      api.workouts.list({ limit: "10" }).catch((e) => { handleError(e, "Failed to load workouts"); return []; }),
+      api.metrics.list({ type: "weight_kg", limit: "60" }).catch((e) => { handleError(e, "Failed to load weight data"); return []; }),
+      api.metrics.list({ type: "bmi", limit: "60" }).catch((e) => { handleError(e, "Failed to load BMI data"); return []; }),
+      api.metrics.list({ type: "resting_hr", limit: "60" }).catch((e) => { handleError(e, "Failed to load heart rate data"); return []; }),
+      api.metrics.list({ type: "sleep_hours", limit: "60" }).catch((e) => { handleError(e, "Failed to load sleep data"); return []; }),
     ]).then(([s, g, w, weight, bmi, hr, sleep]) => {
       setSummary(s);
       setGoals(g);

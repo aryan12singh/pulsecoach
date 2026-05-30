@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
-import { api } from "@/lib/api";
+import { api, handleError } from "@/lib/api";
 import type { GoalStatus, Comparison, Window, MetricScope } from "@/types";
 import { Plus, Target, Check, Activity, Trash2 } from "lucide-react";
 import { Card, Skeleton, Button, Modal, EmptyState } from "@/components/ui";
@@ -30,7 +30,7 @@ export default function GoalsPage() {
 
   const load = () => {
     setLoading(true);
-    api.goals.list().then(setGoals).finally(() => setLoading(false));
+    api.goals.list().then(setGoals).catch((e) => handleError(e, "Failed to load goals")).finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, []);

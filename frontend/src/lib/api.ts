@@ -3,6 +3,12 @@ import type {
   MetricSummaryItem, StrengthProgressPoint, Workout, WorkoutDetail,
   WeeklySummary, Goal,
 } from "@/types";
+import { toast } from "sonner";
+
+export function handleError(error: unknown, context: string = "Operation failed") {
+  console.error(context, error);
+  toast.error(error instanceof Error ? `${context}: ${error.message}` : context);
+}
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8010";
 const BASE = API_BASE;

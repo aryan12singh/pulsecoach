@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, handleError } from "@/lib/api";
 import type { HealthMetric } from "@/types";
 import { fmt } from "@/lib/fmt";
 import { Scale, Activity, Bed, Heart, Plus, Check } from "lucide-react";
@@ -61,7 +61,7 @@ export default function TrendsPage() {
       api.metrics.list({ type: "resting_hr", limit: "500" }),
     ]).then(([w, b, s, r]) => {
       setMetricsByType({ weight_kg: w, bmi: b, sleep_hours: s, resting_hr: r });
-    }).finally(() => setLoading(false));
+    }).catch((e) => handleError(e, "Failed to load trends")).finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, []);
