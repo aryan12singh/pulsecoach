@@ -47,6 +47,17 @@ export default function AnalyticsPage() {
   }, []);
 
   useEffect(() => {
+    try {
+      const stored = Number(localStorage.getItem("pc_analytics_range"));
+      if ([30, 90, 365].includes(stored)) setRange(stored);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("pc_analytics_range", String(range));
+  }, [range]);
+
+  useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const ex = p.get("exercise");
     if (ex) setExercise(ex);
