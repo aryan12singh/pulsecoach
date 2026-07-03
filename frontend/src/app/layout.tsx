@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Inter } from "next/font/google";
 import "./globals.css";
 import ThemeProvider from "@/components/ThemeProvider";
@@ -20,6 +20,26 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "PulseCoach",
   description: "Self-hosted personal health dashboard",
+  applicationName: "PulseCoach",
+  appleWebApp: {
+    capable: true,
+    title: "PulseCoach",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#0b0d10" },
+    { media: "(prefers-color-scheme: light)", color: "#f6f7f8" },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

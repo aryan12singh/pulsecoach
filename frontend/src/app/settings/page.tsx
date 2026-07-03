@@ -7,7 +7,7 @@ import Switch from "@/components/ui/Switch";
 import { Field, Input } from "@/components/ui/FormFields";
 import {
   Activity, Dumbbell, HeartPulse, Bot,
-  CheckCircle2, XCircle, Loader2, Upload,
+  CheckCircle2, XCircle, Loader2, Upload, Download,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -113,7 +113,12 @@ function ImportZone({ label, hint, accept, onFile }: ImportZoneProps) {
         }
       }
     } catch {
+      // Job id unknown (backend restarted mid-import) or network dropped
       setBusy(false);
+      setJob({
+        status: "error", progress: 0, result: null,
+        error: "Lost track of the import job (server restarted?). Re-upload the file — duplicates are skipped automatically.",
+      });
     }
   }
 
@@ -363,7 +368,7 @@ export default function SettingsPage() {
             <Field label="Model (optional)">
               <Input
                 value={strVal("claude_model")}
-                placeholder="Leave blank to use default"
+                placeholder="Default: claude-opus-4-8"
                 onChange={(e) => patch({ claude_model: e.target.value })}
               />
             </Field>
@@ -402,6 +407,33 @@ export default function SettingsPage() {
           />
           <p className="text-xs text-faint">
             Note: Strava strength set detail is not reliably included in the bulk export. Strength data should come from Hevy.
+          </p>
+        </Card>
+      </section>
+
+      {/* Your data */}
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="font-semibold text-sm text-muted tracking-wide uppercase">Your data</h2>
+          <p className="text-xs text-muted mt-1">
+            Everything stays in your own database. Download a copy any time.
+          </p>
+        </div>
+        <Card className="p-5">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <div className="text-sm font-semibold text-text">Export all data</div>
+              <div className="text-xs text-muted mt-0.5">
+                Workouts, strength sets, health metrics and goals as a single JSON file
+              </div>
+            </div>
+            <a href={api.export.jsonUrl()} download>
+              <Button icon={Download}>Download JSON</Button>
+            </a>
+          </div>
+          <p className="text-xs text-faint mt-4">
+            For full backups (including settings and coaching history), back up the Postgres volume:{" "}
+            <code className="text-[11px]">docker compose exec db pg_dump -U pulsecoach pulsecoach &gt; backup.sql</code>
           </p>
         </Card>
       </section>

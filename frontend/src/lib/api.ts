@@ -10,7 +10,10 @@ export function handleError(error: unknown, context: string = "Operation failed"
   toast.error(error instanceof Error ? `${context}: ${error.message}` : context);
 }
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8010";
+// Default is the same-origin /api proxy (see src/app/api/[...path]/route.ts),
+// which works from any device — phone on LAN, hosted deploys — without a
+// rebuild. Set NEXT_PUBLIC_API_URL to talk to the backend directly instead.
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
 const BASE = API_BASE;
 
 async function get<T>(path: string, params?: Record<string, string>): Promise<T> {
@@ -65,6 +68,7 @@ export const api = {
     weeklySummary: () => get<WeeklySummary>("/workouts/summary/weekly"),
     monthlySummary: () => get<MonthlySummary>("/workouts/summary/monthly"),
     create: (body: unknown) => post<Workout>("/workouts", body),
+    delete: (id: number) => del(`/workouts/${id}`),
   },
 
   strength: {
@@ -116,5 +120,9 @@ export const api = {
     importHevy: (file: File) => _postFile<{ job_id: string }>("/ingest/hevy/import", "file", file),
     importStrava: (file: File) => _postFile<{ job_id: string }>("/ingest/strava/import", "file", file),
     jobStatus: (id: string) => get<ImportJob>(`/ingest/jobs/${id}`),
+  },
+
+  export: {
+    jsonUrl: () => `${BASE}/export/json`,
   },
 };
