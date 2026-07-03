@@ -11,8 +11,8 @@ import os
 import shutil
 import zipfile
 from collections import defaultdict
+from collections.abc import Generator
 from datetime import date, datetime, timedelta, timezone
-from typing import Generator
 
 from lxml import etree
 

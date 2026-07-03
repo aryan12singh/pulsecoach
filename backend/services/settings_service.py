@@ -53,34 +53,23 @@ def _env_defaults() -> dict[str, str | None]:
 
 
 async def seed_from_env(db: AsyncSession) -> None:
-    """Seed settings from env vars at startup.
+    """Seed settings from env vars on first boot only.
 
-    Non-secret flags (enabled toggles, URLs) are always synced from env so
-    that .env can disable an integration via restart. Secret credentials use
-    DO NOTHING so a key configured via the Settings UI is never reverted by
-    an old .env value on restart.
+    Every key uses DO NOTHING: env values populate an empty database, but once
+    a row exists the Settings UI owns it — a restart never reverts a toggle or
+    credential the user changed in the app.
     """
     defaults = _env_defaults()
     for key, value in defaults.items():
-        is_secret = _SCHEMA.get(key, False)
-        if value is not None and not is_secret:
-            # Flags and URLs: env wins — lets .env enable/disable integrations
-            stmt = (
-                pg_insert(AppSetting)
-                .values(key=key, value=value, is_secret=False)
-                .on_conflict_do_update(index_elements=["key"], set_={"value": value})
-            )
-        else:
-            # Secrets and None values: seed once, never overwrite
-            stmt = (
-                pg_insert(AppSetting)
-                .values(key=key, value=value, is_secret=is_secret)
-                .on_conflict_do_nothing(index_elements=["key"])
-            )
+        stmt = (
+            pg_insert(AppSetting)
+            .values(key=key, value=value, is_secret=_SCHEMA.get(key, False))
+            .on_conflict_do_nothing(index_elements=["key"])
+        )
         await db.execute(stmt)
     await db.commit()
     _invalidate()
-    logger.info("Settings seeded from env vars")
+    logger.info("Settings seeded from env vars (existing values preserved)")
 
 
 async def _load(db: AsyncSession) -> dict[str, str | None]:

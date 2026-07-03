@@ -1,11 +1,12 @@
 from __future__ import annotations
-import logging
-from datetime import datetime, date, timedelta, timezone
 
-from sqlalchemy import select, func, and_
+import logging
+from datetime import date, datetime, timedelta, timezone
+
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Goal, Workout, StrengthSet, HealthMetric, WindowEnum, MetricScopeEnum, ComparisonEnum
+from models import ComparisonEnum, Goal, HealthMetric, MetricScopeEnum, StrengthSet, WindowEnum, Workout
 from schemas import GoalStatus
 
 logger = logging.getLogger(__name__)
@@ -132,7 +133,7 @@ def _compute_status(current: float, target: float, comparison: ComparisonEnum) -
 
 
 async def evaluate_all(db: AsyncSession) -> list[GoalStatus]:
-    stmt = select(Goal).where(Goal.is_active == True)
+    stmt = select(Goal).where(Goal.is_active.is_(True))
     goals = list((await db.execute(stmt)).scalars().all())
 
     results: list[GoalStatus] = []

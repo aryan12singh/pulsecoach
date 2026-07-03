@@ -135,7 +135,12 @@ function MetricFormModal({ open, onClose, onSaved }: { open: boolean; onClose: (
     if (!value) return;
     setSaving(true);
     try {
-      await api.metrics.create({ metric_type: type, value: Number(value), unit: meta.unit });
+      await api.metrics.create({
+        metric_type: type,
+        value: Number(value),
+        unit: meta.unit,
+        recorded_at: new Date().toISOString(),
+      });
       toast.success("Metric saved");
       setValue("");
       onClose();

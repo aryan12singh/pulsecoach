@@ -1,5 +1,6 @@
-"""Claude AI coaching service. Only imported when ENABLE_COACHING=true."""
+"""Claude AI coaching service. Reads configuration from DB-backed settings."""
 from __future__ import annotations
+
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -7,10 +8,15 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import settings
-from models import CoachingSession, Workout, HealthMetric
+from models import CoachingSession, HealthMetric, Workout
+from services import settings_service as svc
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_CLAUDE_MODEL = "claude-opus-4-8"
+
+# Days of workout/metric history included in the coaching context.
+CONTEXT_DAYS = 14
 
 SYSTEM_PROMPT = """You are a personal fitness coach reviewing real health and workout data.
 Your tone is direct, honest, and specific — you always cite actual numbers from the data provided.
@@ -24,38 +30,39 @@ Do not add caveats about the data being incomplete — work with what you have."
 
 
 async def get_coaching_response(user_message: str, db: AsyncSession) -> CoachingSession:
-    if not settings.enable_coaching:
+    if not await svc.get_bool("coaching_enabled", db):
         raise RuntimeError("Coaching is not enabled")
-    if not settings.anthropic_api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY not configured")
-    if not settings.claude_model:
-        raise RuntimeError("CLAUDE_MODEL not configured — see docs.claude.com for the current model name")
+    api_key = await svc.get_str("anthropic_api_key", db)
+    if not api_key:
+        raise RuntimeError("Anthropic API key not configured — set it in Settings")
+    model = await svc.get_str("claude_model", db) or DEFAULT_CLAUDE_MODEL
 
     context = await _build_context(db)
     full_message = f"""--- USER HEALTH CONTEXT ---
 Date: {datetime.now(timezone.utc).date().isoformat()}
 Active goals (with status): {json.dumps(context['goals'], default=str)}
-Last 14 days workouts: {json.dumps(context['workouts'], default=str)}
+Last {CONTEXT_DAYS} days workouts: {json.dumps(context['workouts'], default=str)}
 Latest health metrics: {json.dumps(context['metrics'], default=str)}
 Weekly summary: {json.dumps(context['weekly_summary'], default=str)}
 User question: {user_message}
 --- END CONTEXT ---"""
 
     import anthropic
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    response = client.messages.create(
-        model=settings.claude_model,
-        max_tokens=512,
+    client = anthropic.AsyncAnthropic(api_key=api_key)
+    response = await client.messages.create(
+        model=model,
+        max_tokens=4096,
+        thinking={"type": "adaptive"},
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": full_message}],
     )
-    ai_text = response.content[0].text
+    ai_text = next((b.text for b in response.content if b.type == "text"), "")
 
     session = CoachingSession(
         user_message=user_message,
         ai_response=ai_text,
         context_snapshot=context,
-        model=settings.claude_model,
+        model=model,
     )
     db.add(session)
     await db.commit()
@@ -64,7 +71,7 @@ User question: {user_message}
 
 
 async def _build_context(db: AsyncSession) -> dict:
-    since = datetime.now(timezone.utc) - timedelta(days=14)
+    since = datetime.now(timezone.utc) - timedelta(days=CONTEXT_DAYS)
 
     workouts_stmt = select(Workout).where(Workout.start_at >= since).order_by(Workout.start_at.desc())
     workouts = list((await db.execute(workouts_stmt)).scalars().all())
@@ -76,9 +83,8 @@ async def _build_context(db: AsyncSession) -> dict:
     )
     metrics = list((await db.execute(metrics_stmt)).scalars().all())
 
-    from services.goal_service import evaluate_all
     from routers.workouts import _build_summary
-    from datetime import date
+    from services.goal_service import evaluate_all
 
     today = datetime.now(timezone.utc).date()
     week_start = today - timedelta(days=today.weekday())
@@ -98,7 +104,7 @@ async def _build_context(db: AsyncSession) -> dict:
         ],
         "metrics": [
             {"type": m.metric_type, "value": m.value, "unit": m.unit, "date": m.date.isoformat()}
-            for m in metrics[:30]
+            for m in metrics[:60]
         ],
         "weekly_summary": weekly.model_dump(),
         "goals": [g.model_dump() for g in goals],

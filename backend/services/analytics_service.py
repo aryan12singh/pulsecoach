@@ -1,13 +1,14 @@
 """Advanced analytics (v2): PR detection, per-muscle volume, overtraining flags."""
 from __future__ import annotations
+
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import StrengthSet, Workout
-from schemas import ExercisePR, MuscleVolume, OvertrainingFlag, AnalyticsSummary
+from schemas import AnalyticsSummary, ExercisePR, MuscleVolume, OvertrainingFlag
 
 logger = logging.getLogger(__name__)
 

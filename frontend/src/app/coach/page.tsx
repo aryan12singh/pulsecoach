@@ -94,7 +94,7 @@ export default function CoachPage() {
             </span>
             <div>
               <div className="font-display font-semibold text-sm">PulseCoach AI</div>
-              <div className="text-muted text-xs">Trained on your last 30 days of data</div>
+              <div className="text-muted text-xs">Answers from your last 14 days of data</div>
             </div>
           </div>
 

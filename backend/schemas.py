@@ -1,21 +1,25 @@
 from __future__ import annotations
-from datetime import datetime, date
-from typing import Any
+
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict
 
 from models import (
-    SourceEnum, WorkoutTypeEnum, WeightUnitEnum,
-    ComparisonEnum, WindowEnum, MetricScopeEnum,
+    ComparisonEnum,
+    MetricScopeEnum,
+    SourceEnum,
+    WeightUnitEnum,
+    WindowEnum,
+    WorkoutTypeEnum,
 )
-
 
 # ── Strength sets ──────────────────────────────────────────────────────────────
 
 class StrengthSetIn(BaseModel):
     exercise_name: str
-    exercise_order: int
-    set_number: int
+    # Both derived server-side from row order when omitted (manual logging)
+    exercise_order: int | None = None
+    set_number: int | None = None
     reps: int | None = None
     weight: float | None = None
     weight_unit: WeightUnitEnum = WeightUnitEnum.kg
@@ -25,10 +29,20 @@ class StrengthSetIn(BaseModel):
     is_warmup: bool = False
 
 
-class StrengthSetOut(StrengthSetIn):
+class StrengthSetOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     workout_id: int
+    exercise_name: str
+    exercise_order: int
+    set_number: int
+    reps: int | None
+    weight: float | None
+    weight_unit: WeightUnitEnum
+    rpe: float | None
+    duration_seconds: float | None
+    distance_m: float | None
+    is_warmup: bool
 
 
 # ── Workouts ───────────────────────────────────────────────────────────────────
@@ -105,7 +119,7 @@ class MetricIn(BaseModel):
     metric_type: str
     value: float
     unit: str
-    recorded_at: datetime
+    recorded_at: datetime | None = None  # defaults to now server-side
     source: SourceEnum = SourceEnum.manual
 
 

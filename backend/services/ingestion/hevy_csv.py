@@ -14,9 +14,8 @@ import io
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any
 
-from models import SourceEnum, WorkoutTypeEnum, WeightUnitEnum
+from models import SourceEnum, WeightUnitEnum, WorkoutTypeEnum
 from services.ingestion.base import (
     IngestResult,
     NormalizedMetric,
@@ -47,7 +46,13 @@ _WORKOUT_DATE_FMTS = [
 
 
 def _norm_headers(row: dict) -> dict[str, str]:
-    return {k.strip().lower(): v for k, v in row.items()}
+    # Ragged rows give DictReader a None key (overflow) or None values
+    # (missing columns) — never let one malformed row crash an import.
+    return {
+        k.strip().lower(): (v if isinstance(v, str) else "")
+        for k, v in row.items()
+        if isinstance(k, str)
+    }
 
 
 def _is_workout_csv(headers: list[str]) -> bool:
@@ -57,7 +62,7 @@ def _is_workout_csv(headers: list[str]) -> bool:
 
 def _is_measurement_csv(headers: list[str]) -> bool:
     lowered = {h.lower() for h in headers}
-    return "weight_kg" in lowered and "fat_percent" in lowered
+    return ("weight_kg" in lowered or "weight_lbs" in lowered) and "fat_percent" in lowered
 
 
 def _parse_workout_csv(content: str) -> IngestResult:
@@ -74,7 +79,7 @@ def _parse_workout_csv(content: str) -> IngestResult:
     workouts: list[NormalizedWorkout] = []
     strength_sets: dict[str, list[NormalizedStrengthSet]] = {}
 
-    for key, rows in groups.items():
+    for rows in groups.values():
         first = rows[0]
         title = first.get("title", "").strip()
         start_str = first.get("start_time", "").strip()
@@ -127,7 +132,12 @@ def _parse_workout_csv(content: str) -> IngestResult:
                 reps = None
 
             try:
-                weight = float(row.get("weight_kg", "") or "") if row.get("weight_kg") else None
+                if row.get("weight_kg"):
+                    weight = float(row["weight_kg"])
+                elif row.get("weight_lbs"):
+                    weight = float(row["weight_lbs"]) * 0.45359237
+                else:
+                    weight = None
             except ValueError:
                 weight = None
 
@@ -137,7 +147,8 @@ def _parse_workout_csv(content: str) -> IngestResult:
                 rpe = None
 
             try:
-                duration_seconds = float(row.get("duration_seconds", "") or "") if row.get("duration_seconds") else None
+                raw_dur = row.get("duration_seconds")
+                duration_seconds = float(raw_dur) if raw_dur else None
             except ValueError:
                 duration_seconds = None
 
@@ -179,20 +190,24 @@ def _parse_measurement_csv(content: str) -> IngestResult:
 
         day = recorded_at.date()
 
-        if row.get("weight_kg"):
-            try:
-                val = float(row["weight_kg"])
-                metrics.append(NormalizedMetric(
-                    metric_type="weight_kg",
-                    value=val,
-                    unit="kg",
-                    recorded_at=recorded_at,
-                    date=day,
-                    source=SourceEnum.hevy,
-                    external_id=f"hevy_measurement:weight_kg:{date_str}",
-                ))
-            except ValueError:
-                pass
+        weight_kg: float | None = None
+        try:
+            if row.get("weight_kg"):
+                weight_kg = float(row["weight_kg"])
+            elif row.get("weight_lbs"):
+                weight_kg = float(row["weight_lbs"]) * 0.45359237
+        except ValueError:
+            weight_kg = None
+        if weight_kg is not None:
+            metrics.append(NormalizedMetric(
+                metric_type="weight_kg",
+                value=round(weight_kg, 2),
+                unit="kg",
+                recorded_at=recorded_at,
+                date=day,
+                source=SourceEnum.hevy,
+                external_id=f"hevy_measurement:weight_kg:{date_str}",
+            ))
 
         if row.get("fat_percent"):
             try:
@@ -243,8 +258,8 @@ def parse_csv_file(content: str) -> IngestResult:
     try:
         reader = csv.reader(io.StringIO(sample))
         headers = next(reader, [])
-    except Exception:
-        raise ValueError("Could not read CSV headers")
+    except Exception as exc:
+        raise ValueError("Could not read CSV headers") from exc
 
     if _is_workout_csv(headers):
         return _parse_workout_csv(content)

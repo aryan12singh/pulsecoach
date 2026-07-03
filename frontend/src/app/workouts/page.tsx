@@ -9,7 +9,7 @@ import WorkoutRow from "@/components/WorkoutRow";
 import { toast } from "sonner";
 
 const TYPES: WorkoutType[] = ["strength", "running", "cycling", "walking", "other"];
-const SOURCES: Source[] = ["apple_health", "hevy", "manual"];
+const SOURCES: Source[] = ["apple_health", "hevy", "strava", "manual"];
 
 export default function WorkoutsPage() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -140,9 +140,10 @@ function WorkoutFormModal({ open, onClose, onSaved }: { open: boolean; onClose: 
         distance_km: f.distance_km ? Number(f.distance_km) : null,
       };
       if (isStrength && sets.length > 0) {
-        body.strength_sets = sets.filter((s) => s.exercise_name).map((s, i) => ({
+        // Backend field is `sets`; exercise_order/set_number are derived
+        // server-side from row order.
+        body.sets = sets.filter((s) => s.exercise_name).map((s) => ({
           exercise_name: s.exercise_name,
-          set_number: i + 1,
           reps: s.reps ? Number(s.reps) : null,
           weight: s.weight ? Number(s.weight) : null,
         }));

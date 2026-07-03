@@ -4,6 +4,7 @@ Strava activities import strength sets/reps/weight only via partner apps (e.g. H
 so this adapter captures the workout envelope; in-gym detail still comes from Hevy.
 """
 from __future__ import annotations
+
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -173,7 +174,10 @@ class StravaAdapter(SourceAdapter):
             start_at=start,
             end_at=start + timedelta(seconds=elapsed) if elapsed else None,
             duration_mins=round(elapsed / 60, 2),
-            active_calories=raw.get("calories") or raw.get("kilojoules"),
+            # Strava omits calories on list endpoints; kilojoules (ride work
+            # output) ≈ kcal burned at typical cycling efficiency, so it's the
+            # standard stand-in when calories are absent.
+            active_calories=raw.get("calories") if raw.get("calories") is not None else raw.get("kilojoules"),
             avg_heart_rate=raw.get("average_heartrate"),
             max_heart_rate=raw.get("max_heartrate"),
             distance_km=round(distance_m / 1000, 3) if distance_m else None,

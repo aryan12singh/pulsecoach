@@ -132,7 +132,9 @@ def parse_csv_content(content: str) -> IngestResult:
 
         workouts.append(NormalizedWorkout(
             source=SourceEnum.strava,
-            external_id=f"strava_csv:{activity_id}",
+            # Same key the API adapter uses (str(activity["id"])) so a CSV
+            # import and a later OAuth sync dedupe against each other.
+            external_id=str(activity_id),
             workout_type=_map_type(activity_type),
             raw_type=activity_type,
             start_at=start_at,

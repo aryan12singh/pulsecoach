@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Header, HTTPExcep
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db, AsyncSessionLocal
+from database import AsyncSessionLocal, get_db
 from services import settings_service as svc
 from services.ingestion.apple_health import AppleHealthAdapter
 from services.ingestion.persist import upsert
@@ -17,8 +17,11 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 _apple_adapter = AppleHealthAdapter()
 
-# In-memory job store (single-user, process-local)
+# In-memory job store (single-user, process-local). Lost on restart — the
+# frontend treats an unknown job id as "job lost". Capped so it can't grow
+# unbounded.
 _jobs: dict[str, dict] = {}
+_MAX_JOBS = 50
 
 
 def _ingest_summary(counts) -> dict:
@@ -189,17 +192,24 @@ async def strava_sync(db: AsyncSession = Depends(get_db)):
 # ── Bulk file import ────────────────────────────────────────────────────────────
 
 def _new_job() -> str:
+    # Evict oldest finished jobs once over the cap
+    if len(_jobs) >= _MAX_JOBS:
+        for jid in [j for j, v in _jobs.items() if v["status"] in ("done", "error")]:
+            del _jobs[jid]
+            if len(_jobs) < _MAX_JOBS:
+                break
     job_id = str(uuid.uuid4())
     _jobs[job_id] = {"status": "pending", "progress": 0, "result": None, "error": None}
     return job_id
 
 
 async def _write_temp(upload: UploadFile, suffix: str) -> str:
+    """Stream the upload to disk in chunks — Apple Health zips can be huge."""
     tmp_dir = tempfile.mkdtemp()
     path = os.path.join(tmp_dir, f"upload{suffix}")
-    data = await upload.read()
     with open(path, "wb") as f:
-        f.write(data)
+        while chunk := await upload.read(1024 * 1024):
+            f.write(chunk)
     return path
 
 

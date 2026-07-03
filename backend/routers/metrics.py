@@ -1,13 +1,13 @@
 from __future__ import annotations
-from datetime import datetime, date, timedelta, timezone
-from typing import Any
+
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, and_, desc
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import HealthMetric, SourceEnum
+from models import HealthMetric
 from schemas import MetricIn, MetricOut, MetricSummaryItem
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
@@ -98,9 +98,11 @@ async def list_metrics(
 
 @router.post("", response_model=MetricOut, status_code=201)
 async def create_metric(body: MetricIn, db: AsyncSession = Depends(get_db)):
+    recorded_at = body.recorded_at or datetime.now(timezone.utc)
     metric = HealthMetric(
-        **body.model_dump(),
-        date=body.recorded_at.date(),
+        **body.model_dump(exclude={"recorded_at"}),
+        recorded_at=recorded_at,
+        date=recorded_at.date(),
     )
     db.add(metric)
     await db.commit()

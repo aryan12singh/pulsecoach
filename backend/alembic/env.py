@@ -13,13 +13,14 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Import models so Alembic sees them
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from database import Base  # noqa: E402
 import models  # noqa: F401, E402 — side-effect: registers all ORM models
-
 from config import settings  # noqa: E402
+from database import Base  # noqa: E402
 
 target_metadata = Base.metadata
 
