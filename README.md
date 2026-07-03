@@ -25,6 +25,9 @@ A self-hosted personal health and training dashboard. Pulls data from Apple Heal
 - [Features](#features)
 - [API reference](#api-reference)
 - [Project structure](#project-structure)
+- [Using it from your phone](#using-it-from-your-phone)
+- [Exporting & backing up](#exporting--backing-up)
+- [Development](#development)
 - [Stopping & resetting](#stopping--resetting)
 - [Security notes](#security-notes)
 
@@ -136,8 +139,10 @@ Copy `.env.example` to `.env`. You only need to fill in what you want to use —
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DATABASE_URL` | **yes** | set by Compose | Postgres connection string — do not change when using Docker Compose |
-| `NEXT_PUBLIC_API_URL` | **yes** | `http://localhost:8010` | URL the browser uses to reach the API — baked into the Next.js build |
-| `SETTINGS_ENCRYPTION_KEY` | no | — | Optional key to encrypt secrets stored in `app_settings` (future feature) |
+| `NEXT_PUBLIC_API_URL` | no | *(empty — use `/api` proxy)* | Leave empty so the browser talks to the API through the frontend's same-origin `/api` proxy (works from phones/other hosts without a rebuild). Set to `http://localhost:8010` to hit the backend directly |
+| `BACKEND_URL` | no | `http://backend:8000` | Where the frontend's `/api` proxy forwards requests (runtime, not baked into the build) |
+| `SEED_DEMO` | no | `false` | Set `true` to load demo workouts/metrics into an empty database |
+| `LOG_LEVEL` | no | `INFO` | Backend log verbosity (`DEBUG`/`INFO`/`WARNING`) |
 | `ENABLE_HEVY` | no | `false` | Bootstrap: seed `hevy_enabled` on first run |
 | `HEVY_API_KEY` | no | — | Bootstrap: seed `hevy_api_key` on first run |
 | `ENABLE_STRAVA` | no | `false` | Bootstrap: seed `strava_enabled` on first run |
@@ -147,7 +152,7 @@ Copy `.env.example` to `.env`. You only need to fill in what you want to use —
 | `FRONTEND_URL` | no | `http://localhost:3010` | Used for post-OAuth redirect back to the UI |
 | `ENABLE_COACHING` | no | `false` | Bootstrap: seed `coaching_enabled` on first run |
 | `ANTHROPIC_API_KEY` | no | — | Bootstrap: seed `anthropic_api_key` on first run |
-| `CLAUDE_MODEL` | no | — | Bootstrap: seed `claude_model` on first run (see [model names](https://docs.anthropic.com/en/docs/models-overview)) |
+| `CLAUDE_MODEL` | no | `claude-opus-4-8` | Bootstrap: seed `claude_model` on first run; leave blank to use the default |
 | `WEBHOOK_SECRET` | no | — | Bootstrap: seed `webhook_secret` — if set, Apple Health and Hevy webhook calls must include this value |
 
 > **Bootstrap vs. runtime:** These env vars only take effect the first time the container starts against a fresh database. After that, use the **Settings page** in the app to change anything. To force a re-seed, run `docker compose down -v` to wipe the volume, then `docker compose up --build`.
@@ -408,13 +413,62 @@ pulsecoach/
 
 ---
 
+## Using it from your phone
+
+The frontend serves the API through its own origin (`/api`), so any device that
+can reach port 3010 gets the full app — no extra config:
+
+1. `docker compose up -d`, then find your computer's LAN IP (`ipconfig getifaddr en0` on macOS).
+2. On your phone, open `http://<that-ip>:3010`.
+3. iOS Safari: Share → **Add to Home Screen** — PulseCoach installs as a standalone app with its own icon.
+4. Import files directly from the phone: Settings → Import data works with
+   `export.zip` from the Files app.
+
+For access away from home (and HTTPS), see [docs/DEPLOY.md](docs/DEPLOY.md).
+
+---
+
+## Exporting & backing up
+
+- **Settings → Your data → Download JSON** exports every workout, strength set,
+  health metric and goal (`GET /export/json`).
+- Workouts can be deleted individually from their detail page (bad imports, test entries).
+- Full backup incl. settings + coaching history:
+  `docker compose exec db pg_dump -U pulsecoach pulsecoach > backup.sql`
+
+---
+
+## Development
+
+Backend tests and lint (no database needed — tests cover the parsers and pure logic):
+
+```bash
+cd backend
+pip install -r requirements.txt -r requirements-dev.txt
+pytest        # unit tests
+ruff check .  # lint
+```
+
+Frontend typecheck/build:
+
+```bash
+cd frontend
+npm ci
+npx tsc --noEmit
+npm run build
+```
+
+CI runs all four on every push/PR (`.github/workflows/ci.yml`).
+
+---
+
 ## Stopping & resetting
 
 ```bash
 # Stop the stack, keep your data
 docker compose down
 
-# Stop and wipe the database (returns to factory state + demo seed)
+# Stop and wipe the database (fresh start; demo data only if SEED_DEMO=true)
 docker compose down -v
 
 # Rebuild images after code changes
@@ -435,4 +489,4 @@ This app is designed for **local, single-user use**. It has no authentication la
 - Keep your `.env` and the Docker volume out of any shared or cloud-synced location.
 - `.env` is already in `.gitignore` — never commit it.
 
-**If you want to run this on a server:** add a reverse proxy (e.g. Caddy or nginx) with authentication in front of both ports, and use a strong `SETTINGS_ENCRYPTION_KEY`.
+**If you want to run this on a server:** put a reverse proxy with authentication (e.g. Caddy with `basic_auth`) in front of the frontend and keep the backend port firewalled — step-by-step instructions in [docs/DEPLOY.md](docs/DEPLOY.md). Note that secrets in `app_settings` are stored in plaintext inside your Postgres volume; protecting the volume and the ports is what protects the secrets.

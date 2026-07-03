@@ -1,0 +1,19 @@
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E402",  # module-level imports not at top (routers imported after app setup)
+    "B008",  # FastAPI Depends() in argument defaults is idiomatic
+    "UP017", # keep datetime.timezone.utc spelling consistent with existing code
+]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
