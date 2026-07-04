@@ -1,14 +1,14 @@
 """Shared dedup + upsert logic. All adapters funnel through here."""
 from __future__ import annotations
+
 import logging
 from dataclasses import dataclass
 
-from sqlalchemy import select, and_, delete
+from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from models import Workout, StrengthSet, HealthMetric
-from services.ingestion.base import IngestResult, NormalizedWorkout, NormalizedMetric
+from models import HealthMetric, StrengthSet, Workout
+from services.ingestion.base import IngestResult, NormalizedMetric, NormalizedWorkout
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +18,7 @@ class UpsertCounts:
     workouts_inserted: int = 0
     workouts_updated: int = 0
     workouts_skipped: int = 0
+    sets_inserted: int = 0
     metrics_inserted: int = 0
     metrics_skipped: int = 0
 
@@ -41,6 +42,7 @@ async def upsert(result: IngestResult, db: AsyncSession) -> UpsertCounts:
             )
             for s in sets:
                 db.add(StrengthSet(workout_id=workout_id, **s.model_dump()))
+            counts.sets_inserted += len(sets)
             await db.execute(
                 Workout.__table__.update()
                 .where(Workout.id == workout_id)
@@ -60,24 +62,37 @@ async def upsert(result: IngestResult, db: AsyncSession) -> UpsertCounts:
 
 async def _upsert_workout(nw: NormalizedWorkout, db: AsyncSession) -> tuple[int | None, bool]:
     """Insert or update a workout. Returns (workout id, was_newly_inserted)."""
-    # Find existing by (source, external_id) or (source, start_at, workout_type)
-    if nw.external_id:
-        stmt = select(Workout).where(
-            and_(Workout.source == nw.source, Workout.external_id == nw.external_id)
-        )
-    else:
-        stmt = select(Workout).where(
-            and_(
-                Workout.source == nw.source,
-                Workout.start_at == nw.start_at,
-                Workout.workout_type == nw.workout_type,
-            )
-        )
+    existing = None
+    matched_by_fallback = False
 
-    existing = (await db.execute(stmt)).scalar_one_or_none()
+    if nw.external_id:
+        existing = (await db.execute(
+            select(Workout).where(
+                and_(Workout.source == nw.source, Workout.external_id == nw.external_id)
+            )
+        )).scalar_one_or_none()
+
+    # Fallback: the same session can arrive through different paths with
+    # different external IDs (webhook vs file import, CSV vs API) — match on
+    # (source, start_at, workout_type) so mixed imports don't duplicate.
+    if existing is None:
+        existing = (await db.execute(
+            select(Workout).where(
+                and_(
+                    Workout.source == nw.source,
+                    Workout.start_at == nw.start_at,
+                    Workout.workout_type == nw.workout_type,
+                )
+            )
+        )).scalar_one_or_none()
+        matched_by_fallback = existing is not None
 
     data = nw.model_dump()
     if existing:
+        if matched_by_fallback and existing.external_id and data.get("external_id"):
+            # Keep the ID the row was first stored under so repeated imports
+            # from alternating paths don't flip-flop the identifier.
+            data.pop("external_id")
         for k, v in data.items():
             setattr(existing, k, v)
         await db.flush()

@@ -1,15 +1,15 @@
 from __future__ import annotations
-from datetime import datetime, date, timedelta, timezone
-from typing import Any
+
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, and_, cast, Date
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from database import get_db
-from models import Workout, StrengthSet, WorkoutTypeEnum, SourceEnum
-from schemas import WorkoutIn, WorkoutOut, WorkoutDetail, WeeklySummary, MonthlySummary, StrengthSetOut
+from models import SourceEnum, StrengthSet, Workout, WorkoutTypeEnum
+from schemas import MonthlySummary, WeeklySummary, WorkoutDetail, WorkoutIn, WorkoutOut, WorkoutUpdate
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
 
@@ -110,19 +110,75 @@ async def get_workout(workout_id: int, db: AsyncSession = Depends(get_db)):
     return workout
 
 
+def _add_sets(workout: Workout, sets_data, db: AsyncSession) -> None:
+    """Attach sets, deriving exercise_order (first appearance) and per-exercise
+    set_number when the client omits them."""
+    order_map: dict[str, int] = {}
+    set_counts: dict[str, int] = {}
+    for s in sets_data:
+        if s.exercise_name not in order_map:
+            order_map[s.exercise_name] = len(order_map)
+        set_counts[s.exercise_name] = set_counts.get(s.exercise_name, 0) + 1
+        payload = s.model_dump()
+        if payload["exercise_order"] is None:
+            payload["exercise_order"] = order_map[s.exercise_name]
+        if payload["set_number"] is None:
+            payload["set_number"] = set_counts[s.exercise_name]
+        db.add(StrengthSet(workout_id=workout.id, **payload))
+    workout.has_strength_detail = bool(sets_data)
+
+
 @router.post("", response_model=WorkoutOut, status_code=201)
 async def create_workout(body: WorkoutIn, db: AsyncSession = Depends(get_db)):
-    sets_data = body.sets
-    data = body.model_dump(exclude={"sets"})
-    workout = Workout(**data)
+    workout = Workout(**body.model_dump(exclude={"sets"}))
     db.add(workout)
     await db.flush()
-
-    for s in sets_data:
-        db.add(StrengthSet(workout_id=workout.id, **s.model_dump()))
-    if sets_data:
-        workout.has_strength_detail = True
-
+    _add_sets(workout, body.sets, db)
     await db.commit()
     await db.refresh(workout)
     return workout
+
+
+@router.put("/{workout_id}", response_model=WorkoutDetail)
+async def update_workout(workout_id: int, body: WorkoutUpdate, db: AsyncSession = Depends(get_db)):
+    """Update workout fields; a provided `sets` list replaces all strength sets."""
+    stmt = (
+        select(Workout)
+        .options(selectinload(Workout.strength_sets))
+        .where(Workout.id == workout_id)
+    )
+    workout = (await db.execute(stmt)).scalar_one_or_none()
+    if not workout:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Workout not found")
+
+    data = body.model_dump(exclude_unset=True)
+    sets_data = data.pop("sets", None)
+    for k, v in data.items():
+        setattr(workout, k, v)
+
+    if sets_data is not None:
+        from sqlalchemy import delete as sa_delete
+        await db.execute(sa_delete(StrengthSet).where(StrengthSet.workout_id == workout.id))
+        _add_sets(workout, body.sets, db)
+
+    await db.commit()
+    # populate_existing: the bulk delete bypassed the identity map, so the
+    # cached strength_sets collection must be reloaded from the database.
+    result = (
+        await db.execute(stmt.execution_options(populate_existing=True))
+    ).scalar_one()
+    return result
+
+
+@router.delete("/{workout_id}", status_code=204)
+async def delete_workout(workout_id: int, db: AsyncSession = Depends(get_db)):
+    """Hard-delete a workout and its strength sets (cascade)."""
+    workout = (await db.execute(
+        select(Workout).where(Workout.id == workout_id)
+    )).scalar_one_or_none()
+    if not workout:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Workout not found")
+    await db.delete(workout)
+    await db.commit()

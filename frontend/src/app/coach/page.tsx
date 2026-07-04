@@ -20,6 +20,8 @@ export default function CoachPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+  const [streamText, setStreamText] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -36,19 +38,59 @@ export default function CoachPage() {
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, sending]);
+  }, [messages, sending, streamText]);
 
   async function send(text: string) {
     if (!text.trim() || sending) return;
     setSending(true);
     setInput("");
+    setPendingQuestion(text);
+    setStreamText("");
     try {
-      const msg = await api.coaching.chat(text);
-      setMessages((m) => [...m, msg]);
-    } catch {
-      toast.error("Coaching request failed \u2014 check that coaching is enabled.");
+      const res = await fetch(api.coaching.streamUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text }),
+      });
+      if (!res.ok || !res.body) throw new Error(`stream \u2192 ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finished = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // SSE events are separated by a blank line
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+        for (const raw of events) {
+          const line = raw.split("\n").find((l) => l.startsWith("data: "));
+          if (!line) continue;
+          const payload = JSON.parse(line.slice(6));
+          if (payload.type === "delta") {
+            setStreamText((t) => t + payload.text);
+          } else if (payload.type === "done") {
+            setMessages((m) => [...m, payload.session as ChatMessage]);
+            finished = true;
+          } else if (payload.type === "error") {
+            throw new Error(payload.message);
+          }
+        }
+      }
+      if (!finished) throw new Error("stream ended early");
+    } catch (e) {
+      toast.error(
+        e instanceof Error && e.message && !e.message.startsWith("stream")
+          ? `Coaching failed: ${e.message}`
+          : "Coaching request failed \u2014 check that coaching is enabled and the API key is set.",
+      );
     } finally {
       setSending(false);
+      setPendingQuestion(null);
+      setStreamText("");
     }
   }
 
@@ -94,7 +136,7 @@ export default function CoachPage() {
             </span>
             <div>
               <div className="font-display font-semibold text-sm">PulseCoach AI</div>
-              <div className="text-muted text-xs">Trained on your last 30 days of data</div>
+              <div className="text-muted text-xs">Answers from your last 14 days of data</div>
             </div>
           </div>
 
@@ -143,19 +185,49 @@ export default function CoachPage() {
             </div>
           ))}
 
-          {/* Typing indicator */}
-          {sending && (
-            <div className="self-start">
-              <div
-                className="flex items-center gap-2 text-muted text-sm"
-                style={{
-                  background: "var(--surface-2)",
-                  border: "1px solid var(--border)",
-                  padding: "13px 16px",
-                  borderRadius: "16px 16px 16px 4px",
-                }}
-              >
-                <TypingDots /> Thinking&hellip;
+          {/* In-flight exchange: user bubble immediately, streamed AI text as it arrives */}
+          {sending && pendingQuestion && (
+            <div className="flex flex-col gap-3">
+              <div className="self-end max-w-[78%]">
+                <div
+                  className="text-sm font-medium"
+                  style={{
+                    background: "var(--accent)",
+                    color: "var(--on-accent)",
+                    padding: "11px 15px",
+                    borderRadius: "16px 16px 4px 16px",
+                  }}
+                >
+                  {pendingQuestion}
+                </div>
+              </div>
+              <div className="self-start max-w-[88%]">
+                {streamText ? (
+                  <div
+                    className="text-sm leading-relaxed whitespace-pre-wrap"
+                    style={{
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
+                      padding: "13px 16px",
+                      borderRadius: "16px 16px 16px 4px",
+                    }}
+                  >
+                    {streamText}
+                  </div>
+                ) : (
+                  <div
+                    className="flex items-center gap-2 text-muted text-sm"
+                    style={{
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      padding: "13px 16px",
+                      borderRadius: "16px 16px 16px 4px",
+                    }}
+                  >
+                    <TypingDots /> Thinking&hellip;
+                  </div>
+                )}
               </div>
             </div>
           )}

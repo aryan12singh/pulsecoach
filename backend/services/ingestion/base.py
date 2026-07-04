@@ -1,11 +1,12 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from datetime import datetime, date
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel
 
-from models import SourceEnum, WorkoutTypeEnum, WeightUnitEnum
+from models import SourceEnum, WeightUnitEnum, WorkoutTypeEnum
 
 
 class NormalizedWorkout(BaseModel):

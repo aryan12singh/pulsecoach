@@ -19,6 +19,8 @@ services:
       - "8010:8000"
     environment:
       DATABASE_URL: postgresql://pulsecoach:pulsecoach@db:5432/pulsecoach
+      SEED_DEMO: ${SEED_DEMO:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
       ENABLE_HEVY: ${ENABLE_HEVY:-false}
       HEVY_API_KEY: ${HEVY_API_KEY:-}
@@ -38,7 +40,17 @@ services:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:8010
+        # Empty default = the browser talks to the backend through the
+        # frontend's /api proxy (same origin — works from any device without
+        # a rebuild). Set to e.g. http://localhost:8010 to bypass the proxy.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+    environment:
+      # Where the /api proxy forwards requests (server-side, read at runtime)
+      BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
+      # Optional login password. Empty = no login (local use). When set, every
+      # page and /api call requires signing in; also firewall or remove the
+      # backend's 8010 port mapping above so the proxy is the only way in.
+      APP_PASSWORD: ${APP_PASSWORD:-}
     ports:
       - "3010:3000"
     depends_on:

@@ -1,21 +1,25 @@
 from __future__ import annotations
-from datetime import datetime, date
-from typing import Any
+
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict
 
 from models import (
-    SourceEnum, WorkoutTypeEnum, WeightUnitEnum,
-    ComparisonEnum, WindowEnum, MetricScopeEnum,
+    ComparisonEnum,
+    MetricScopeEnum,
+    SourceEnum,
+    WeightUnitEnum,
+    WindowEnum,
+    WorkoutTypeEnum,
 )
-
 
 # ── Strength sets ──────────────────────────────────────────────────────────────
 
 class StrengthSetIn(BaseModel):
     exercise_name: str
-    exercise_order: int
-    set_number: int
+    # Both derived server-side from row order when omitted (manual logging)
+    exercise_order: int | None = None
+    set_number: int | None = None
     reps: int | None = None
     weight: float | None = None
     weight_unit: WeightUnitEnum = WeightUnitEnum.kg
@@ -25,10 +29,20 @@ class StrengthSetIn(BaseModel):
     is_warmup: bool = False
 
 
-class StrengthSetOut(StrengthSetIn):
+class StrengthSetOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     workout_id: int
+    exercise_name: str
+    exercise_order: int
+    set_number: int
+    reps: int | None
+    weight: float | None
+    weight_unit: WeightUnitEnum
+    rpe: float | None
+    duration_seconds: float | None
+    distance_m: float | None
+    is_warmup: bool
 
 
 # ── Workouts ───────────────────────────────────────────────────────────────────
@@ -45,6 +59,20 @@ class WorkoutIn(BaseModel):
     max_heart_rate: float | None = None
     distance_km: float | None = None
     sets: list[StrengthSetIn] = []
+
+
+class WorkoutUpdate(BaseModel):
+    """Partial update; `sets` replaces all strength sets when provided."""
+    workout_type: WorkoutTypeEnum | None = None
+    raw_type: str | None = None
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+    duration_mins: float | None = None
+    active_calories: float | None = None
+    avg_heart_rate: float | None = None
+    max_heart_rate: float | None = None
+    distance_km: float | None = None
+    sets: list[StrengthSetIn] | None = None
 
 
 class WorkoutOut(BaseModel):
@@ -105,7 +133,7 @@ class MetricIn(BaseModel):
     metric_type: str
     value: float
     unit: str
-    recorded_at: datetime
+    recorded_at: datetime | None = None  # defaults to now server-side
     source: SourceEnum = SourceEnum.manual
 
 
@@ -227,3 +255,36 @@ class AppConfig(BaseModel):
     hevy_enabled: bool
     strava_enabled: bool
     analytics_enabled: bool = True
+
+
+# ── Settings ───────────────────────────────────────────────────────────────────
+
+class SettingsResponse(BaseModel):
+    hevy_enabled: bool
+    hevy_api_key: str | None       # masked if set
+    strava_enabled: bool
+    strava_client_id: str | None
+    strava_client_secret: str | None  # masked if set
+    strava_redirect_uri: str
+    coaching_enabled: bool
+    anthropic_api_key: str | None  # masked if set
+    claude_model: str | None
+    webhook_secret: str | None     # masked if set
+
+
+class SettingsUpdate(BaseModel):
+    hevy_enabled: bool | None = None
+    hevy_api_key: str | None = None
+    strava_enabled: bool | None = None
+    strava_client_id: str | None = None
+    strava_client_secret: str | None = None
+    strava_redirect_uri: str | None = None
+    coaching_enabled: bool | None = None
+    anthropic_api_key: str | None = None
+    claude_model: str | None = None
+    webhook_secret: str | None = None
+
+
+class TestResult(BaseModel):
+    ok: bool
+    message: str

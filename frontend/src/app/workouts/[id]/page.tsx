@@ -1,16 +1,18 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api, handleError } from "@/lib/api";
 import type { WorkoutDetail as WD, StrengthSet } from "@/types";
 import { fmt } from "@/lib/fmt";
 import {
   ArrowLeft, ArrowRight, Clock, Flame, Heart, Zap,
-  TrendingUp, Activity, Dumbbell, Bike, Footprints,
+  TrendingUp, Activity, Dumbbell, Bike, Footprints, Trash2, Pencil,
 } from "lucide-react";
-import { Card, Badge, Skeleton, Button } from "@/components/ui";
+import { Card, Badge, Skeleton, Button, Modal } from "@/components/ui";
+import WorkoutFormModal from "@/components/WorkoutFormModal";
 import { LucideIcon } from "lucide-react";
+import { toast } from "sonner";
 
 const WORKOUT_ICON: Record<string, LucideIcon> = {
   strength: Dumbbell, running: Footprints, cycling: Bike, walking: Footprints, other: Activity,
@@ -22,14 +24,33 @@ const WORKOUT_COLOR: Record<string, string> = {
 
 export default function WorkoutDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const [workout, setWorkout] = useState<WD | null>(null);
   const [loading, setLoading] = useState(true);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
-  useEffect(() => {
+  const reload = () => {
     const id = Number(params.id);
     if (!id) return;
     api.workouts.get(id).then(setWorkout).finally(() => setLoading(false));
-  }, [params.id]);
+  };
+
+  useEffect(reload, [params.id]);
+
+  async function handleDelete() {
+    if (!workout) return;
+    setDeleting(true);
+    try {
+      await api.workouts.delete(workout.id);
+      toast.success("Workout deleted");
+      router.push("/workouts");
+    } catch (e) {
+      handleError(e, "Failed to delete workout");
+      setDeleting(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -73,7 +94,7 @@ export default function WorkoutDetailPage() {
             >
               <Icon size={26} />
             </span>
-            <div>
+            <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="font-display font-semibold text-h2 capitalize">
                   {workout.raw_type || workout.workout_type}
@@ -82,6 +103,22 @@ export default function WorkoutDetailPage() {
               </div>
               <p className="text-muted text-sm mt-1">{fmt.dateTime(workout.start_at)} &middot; {workout.source.replace("_", " ")}</p>
             </div>
+            <div className="flex items-center gap-1">
+              <button
+                aria-label="Edit workout"
+                className="p-2 rounded-md text-muted hover:text-text hover:bg-surface-2 transition-colors"
+                onClick={() => setEditOpen(true)}
+              >
+                <Pencil size={17} />
+              </button>
+              <button
+                aria-label="Delete workout"
+                className="p-2 rounded-md text-muted hover:text-danger hover:bg-surface-2 transition-colors"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 size={18} />
+              </button>
+            </div>
           </div>
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))" }}>
             <DetailStat icon={Clock} label="Duration" value={Math.round(workout.duration_mins)} unit="min" />
@@ -89,7 +126,7 @@ export default function WorkoutDetailPage() {
             {workout.avg_heart_rate != null && <DetailStat icon={Heart} label="Avg HR" value={Math.round(workout.avg_heart_rate)} unit="bpm" />}
             {workout.max_heart_rate != null && <DetailStat icon={Zap} label="Max HR" value={Math.round(workout.max_heart_rate)} unit="bpm" />}
             {workout.distance_km != null && <DetailStat icon={TrendingUp} label="Distance" value={Number(workout.distance_km.toFixed(1))} unit="km" />}
-            {volume > 0 && <DetailStat icon={Activity} label="Volume" value={volume} unit="kg\u00B7r" />}
+            {volume > 0 && <DetailStat icon={Activity} label="Volume" value={volume} unit={"kg\u00B7r"} />}
           </div>
         </Card>
 
@@ -133,6 +170,32 @@ export default function WorkoutDetailPage() {
           </Card>
         )}
       </div>
+
+      <WorkoutFormModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onSaved={reload}
+        editing={workout}
+      />
+
+      <Modal
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Delete workout?"
+        footer={
+          <>
+            <Button onClick={() => setConfirmDelete(false)}>Cancel</Button>
+            <Button variant="danger" icon={Trash2} onClick={handleDelete} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-muted text-sm">
+          This permanently removes the workout{sets.length > 0 ? ` and its ${sets.length} sets` : ""}.
+          If it came from an integration, re-syncing or re-importing will bring it back.
+        </p>
+      </Modal>
     </div>
   );
 }

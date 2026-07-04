@@ -105,6 +105,10 @@ export default function Dashboard() {
   const sleepData = (metricsByType.sleep_hours || []).map((m) => ({ date: m.date, value: m.value }));
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const isEmpty =
+    workouts.length === 0 &&
+    goals.length === 0 &&
+    Object.values(metricsByType).every((arr) => arr.length === 0);
 
   return (
     <div className="animate-fade-up">
@@ -136,6 +140,8 @@ export default function Dashboard() {
 
       {loading ? (
         <DashSkeleton />
+      ) : isEmpty ? (
+        <OnboardingHero />
       ) : prefs.density === "focused" ? (
         <FocusedView
           cards={metricCards}
@@ -167,6 +173,40 @@ export default function Dashboard() {
         setDensity={setDensity}
       />
     </div>
+  );
+}
+
+/* ============ First-run onboarding ============ */
+function OnboardingHero() {
+  return (
+    <Card className="relative overflow-hidden">
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: "radial-gradient(700px 260px at 85% -20%, var(--accent-soft), transparent 70%)" }}
+      />
+      <div className="relative max-w-[560px] py-6">
+        <span className="eyebrow">Welcome to PulseCoach</span>
+        <h2 className="font-display font-semibold text-[26px] mt-2 mb-3">
+          Your dashboard is empty — let&apos;s fix that.
+        </h2>
+        <p className="text-muted text-sm leading-relaxed mb-6">
+          Import your full history from Apple Health, Hevy or Strava in one upload,
+          connect a live integration, or just log your first workout by hand.
+          Everything stays in your own database.
+        </p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <Link href="/settings">
+            <Button variant="primary" icon={ArrowRight}>Import your data</Button>
+          </Link>
+          <Link href="/workouts?action=log">
+            <Button icon={Plus}>Log a workout</Button>
+          </Link>
+          <Link href="/goals?action=add">
+            <Button icon={Edit}>Set a goal</Button>
+          </Link>
+        </div>
+      </div>
+    </Card>
   );
 }
 

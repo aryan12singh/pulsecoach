@@ -228,7 +228,7 @@ export default function AnalyticsPage() {
             xKey="label"
             yKey="value"
             horizontal
-            unit=" kg\u00B7r"
+            unit={" kg\u00B7r"}
             fmtVal={(v) => fmt.num(v)}
           />
         </Card>

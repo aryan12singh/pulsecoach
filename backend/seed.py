@@ -1,21 +1,35 @@
-"""Seed script — idempotent. Run after migrations."""
+"""Demo seed script — idempotent, opt-in via SEED_DEMO=true. Run after migrations."""
 from __future__ import annotations
-import asyncio
-import random
-from datetime import datetime, timedelta, timezone, date
 
-from sqlalchemy import select, func
+import asyncio
+import os
+import random
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import func, select
 
 from database import AsyncSessionLocal
 from models import (
-    Goal, HealthMetric, StrengthSet, Workout,
-    ComparisonEnum, MetricScopeEnum, SourceEnum, WeightUnitEnum, WindowEnum, WorkoutTypeEnum,
+    ComparisonEnum,
+    Goal,
+    HealthMetric,
+    MetricScopeEnum,
+    SourceEnum,
+    StrengthSet,
+    WeightUnitEnum,
+    WindowEnum,
+    Workout,
+    WorkoutTypeEnum,
 )
 
 random.seed(42)
 
 
 async def seed():
+    if os.environ.get("SEED_DEMO", "").lower() not in ("true", "1", "yes"):
+        print("SEED_DEMO not enabled — skipping demo data (start fresh and import your own).")
+        return
+
     async with AsyncSessionLocal() as db:
         # Skip if data already exists
         count = (await db.execute(select(func.count(Workout.id)))).scalar()
@@ -24,7 +38,9 @@ async def seed():
             return
 
         today = datetime.now(timezone.utc)
-        now = lambda delta_days=0: today - timedelta(days=delta_days)
+
+        def now(delta_days=0):
+            return today - timedelta(days=delta_days)
 
         # ── Goals ──────────────────────────────────────────────────────────────
         goals = [
@@ -108,7 +124,11 @@ async def seed():
                 active_calories=float(calories),
                 avg_heart_rate=float(avg_hr),
                 max_heart_rate=float(avg_hr + random.randint(15, 25)),
-                distance_km=random.uniform(4, 8) if wtype in (WorkoutTypeEnum.running, WorkoutTypeEnum.cycling) else None,
+                distance_km=(
+                    random.uniform(4, 8)
+                    if wtype in (WorkoutTypeEnum.running, WorkoutTypeEnum.cycling)
+                    else None
+                ),
                 has_strength_detail=wtype == WorkoutTypeEnum.strength,
             )
             db.add(workout)

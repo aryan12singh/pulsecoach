@@ -1,14 +1,18 @@
 """Hevy API adapter (on-demand pull). Only instantiated when ENABLE_HEVY=true."""
 from __future__ import annotations
+
 import logging
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 
-from models import SourceEnum, WorkoutTypeEnum, WeightUnitEnum
+from models import SourceEnum, WeightUnitEnum, WorkoutTypeEnum
 from services.ingestion.base import (
-    IngestResult, NormalizedStrengthSet, NormalizedWorkout, SourceAdapter,
+    IngestResult,
+    NormalizedStrengthSet,
+    NormalizedWorkout,
+    SourceAdapter,
 )
 
 logger = logging.getLogger(__name__)
@@ -101,15 +105,22 @@ class HevyAdapter(SourceAdapter):
         for ex_idx, exercise in enumerate(raw.get("exercises", [])):
             ex_name = exercise.get("title") or exercise.get("exercise_template", {}).get("title", "Unknown")
             for set_idx, s in enumerate(exercise.get("sets", [])):
+                # weight_kg is already kilograms regardless of the user's display
+                # unit; only a bare "weight" needs converting when the unit is lb.
                 unit_str = s.get("weight_unit", "kg").lower()
-                weight_unit = WeightUnitEnum.lb if unit_str == "lb" else WeightUnitEnum.kg
+                if s.get("weight_kg") is not None:
+                    weight = s["weight_kg"]
+                elif s.get("weight") is not None and unit_str == "lb":
+                    weight = s["weight"] * 0.45359237
+                else:
+                    weight = s.get("weight")
                 sets.append(NormalizedStrengthSet(
                     exercise_name=ex_name,
                     exercise_order=ex_idx,
                     set_number=set_idx + 1,
                     reps=s.get("reps"),
-                    weight=s.get("weight_kg") or s.get("weight"),
-                    weight_unit=weight_unit,
+                    weight=weight,
+                    weight_unit=WeightUnitEnum.kg,
                     rpe=s.get("rpe"),
                     duration_seconds=s.get("duration_seconds"),
                     distance_m=s.get("distance_meters"),

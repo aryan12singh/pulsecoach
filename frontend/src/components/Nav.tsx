@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import {
   Activity, LayoutDashboard, Dumbbell, TrendingUp, Target,
   BarChart3, Bot, Sun, Moon, Plus, RefreshCw, Menu, X,
-  Heart, Zap,
+  Heart, Zap, Settings, LogOut,
   LucideIcon,
 } from "lucide-react";
 
@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/goals", label: "Goals", icon: Target, id: "goals" },
   { href: "/analytics", label: "Analytics", icon: BarChart3, id: "analytics" },
   { href: "/coach", label: "Coach", icon: Bot, id: "coach", flag: "coaching_enabled" as const },
+  { href: "/settings", label: "Settings", icon: Settings, id: "settings" },
 ];
 
 export default function Nav() {
@@ -30,13 +31,28 @@ export default function Nav() {
   const [syncing, setSyncing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [authEnabled, setAuthEnabled] = useState(false);
   const addRef = useRef<HTMLDivElement>(null);
+  const onLogin = path === "/login";
 
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
+    if (onLogin) return;
     api.config().then(setConfig).catch(() => {});
-  }, []);
+    fetch("/api/auth/status")
+      .then((r) => r.json())
+      .then((s) => setAuthEnabled(Boolean(s?.enabled)))
+      .catch(() => {});
+  }, [onLogin]);
+
+  async function logout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      window.location.href = "/login";
+    }
+  }
 
   useEffect(() => {
     if (!addOpen) return;
@@ -68,6 +84,9 @@ export default function Nav() {
     if (href === "/") return path === "/";
     return path.startsWith(href);
   };
+
+  // The login page stands alone — no nav chrome.
+  if (onLogin) return null;
 
   return (
     <nav
@@ -159,6 +178,17 @@ export default function Nav() {
             </button>
           )}
 
+          {authEnabled && (
+            <button
+              aria-label="Sign out"
+              title="Sign out"
+              onClick={logout}
+              className="nav-desktop inline-flex items-center justify-center p-2 rounded-md bg-surface-2 text-muted border border-border hover:text-text hover:border-border-strong hover:bg-surface-3 transition-all"
+            >
+              <LogOut size={18} />
+            </button>
+          )}
+
           <button
             className="nav-mobile inline-flex items-center justify-center p-2 rounded-md bg-surface-2 text-text border border-border hover:border-border-strong hover:bg-surface-3 transition-all"
             aria-label="Menu"
@@ -203,6 +233,14 @@ export default function Nav() {
             >
               <Zap size={18} /> Connect Strava
             </a>
+          )}
+          {authEnabled && (
+            <button
+              onClick={() => { setMenuOpen(false); logout(); }}
+              className="flex items-center gap-3 px-3.5 py-3 rounded-md text-sm font-semibold text-muted hover:text-text hover:bg-surface-2 transition-colors"
+            >
+              <LogOut size={18} /> Sign out
+            </button>
           )}
         </div>
       )}

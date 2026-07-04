@@ -1,12 +1,16 @@
 """Apple Health via Health Auto Export adapter."""
 from __future__ import annotations
+
 import logging
 from datetime import datetime, timezone
 from typing import Any
 
 from models import SourceEnum, WorkoutTypeEnum
 from services.ingestion.base import (
-    IngestResult, NormalizedMetric, NormalizedWorkout, SourceAdapter,
+    IngestResult,
+    NormalizedMetric,
+    NormalizedWorkout,
+    SourceAdapter,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,7 +41,6 @@ _METRIC_MAP: dict[str, tuple[str, str]] = {
     "step_count": ("steps", "steps"),
     "steps": ("steps", "steps"),
     "active_energy_burned": ("active_energy", "kcal"),
-    "basal_body_temperature": ("body_fat_pct", "pct"),  # fallback
     "body_fat_percentage": ("body_fat_pct", "%"),
     "vo2_max": ("vo2max", "mL/kg/min"),
 }
@@ -109,7 +112,12 @@ class AppleHealthAdapter(SourceAdapter):
             qty = float(dist_data.get("qty", 0))
             unit = dist_data.get("units", "km").lower()
             if qty:
-                distance_km = qty if unit == "km" else qty * 1.60934
+                if unit in ("mi", "miles"):
+                    distance_km = qty * 1.60934
+                elif unit in ("m", "meters"):
+                    distance_km = qty / 1000
+                else:
+                    distance_km = qty
 
         return NormalizedWorkout(
             source=SourceEnum.apple_health,

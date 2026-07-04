@@ -7,3 +7,6 @@ pydantic==2.10.3
 pydantic-settings==2.6.1
 httpx==0.28.1
 anthropic==0.40.0
+lxml>=5.3
+python-multipart>=0.0.9
+aiofiles>=24.1

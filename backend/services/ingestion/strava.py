@@ -4,6 +4,7 @@ Strava activities import strength sets/reps/weight only via partner apps (e.g. H
 so this adapter captures the workout envelope; in-gym detail still comes from Hevy.
 """
 from __future__ import annotations
+
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -12,7 +13,6 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import settings
 from models import OAuthToken, SourceEnum, WorkoutTypeEnum
 from services.ingestion.base import IngestResult, NormalizedWorkout, SourceAdapter
 
@@ -37,12 +37,12 @@ _TYPE_MAP: dict[str, WorkoutTypeEnum] = {
 }
 
 
-def authorize_url() -> str:
+def authorize_url(client_id: str, redirect_uri: str) -> str:
     """Build the Strava consent URL the user is redirected to."""
     from urllib.parse import urlencode
     params = {
-        "client_id": settings.strava_client_id or "",
-        "redirect_uri": settings.strava_redirect_uri,
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
         "response_type": "code",
         "approval_prompt": "auto",
         "scope": "activity:read_all",
@@ -53,16 +53,18 @@ def authorize_url() -> str:
 class StravaAdapter(SourceAdapter):
     source_name = "strava"
 
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, client_id: str = "", client_secret: str = "") -> None:
         self._db = db
+        self._client_id = client_id
+        self._client_secret = client_secret
 
     # ── OAuth ────────────────────────────────────────────────────────────────
 
     async def exchange_code(self, code: str) -> OAuthToken:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(STRAVA_TOKEN_URL, data={
-                "client_id": settings.strava_client_id,
-                "client_secret": settings.strava_client_secret,
+                "client_id": self._client_id,
+                "client_secret": self._client_secret,
                 "code": code,
                 "grant_type": "authorization_code",
             })
@@ -111,8 +113,8 @@ class StravaAdapter(SourceAdapter):
         if token.expires_at and token.expires_at <= datetime.now(timezone.utc) + timedelta(minutes=5):
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.post(STRAVA_TOKEN_URL, data={
-                    "client_id": settings.strava_client_id,
-                    "client_secret": settings.strava_client_secret,
+                    "client_id": self._client_id,
+                    "client_secret": self._client_secret,
                     "grant_type": "refresh_token",
                     "refresh_token": token.refresh_token,
                 })
@@ -172,7 +174,10 @@ class StravaAdapter(SourceAdapter):
             start_at=start,
             end_at=start + timedelta(seconds=elapsed) if elapsed else None,
             duration_mins=round(elapsed / 60, 2),
-            active_calories=raw.get("calories") or raw.get("kilojoules"),
+            # Strava omits calories on list endpoints; kilojoules (ride work
+            # output) ≈ kcal burned at typical cycling efficiency, so it's the
+            # standard stand-in when calories are absent.
+            active_calories=raw.get("calories") if raw.get("calories") is not None else raw.get("kilojoules"),
             avg_heart_rate=raw.get("average_heartrate"),
             max_heart_rate=raw.get("max_heartrate"),
             distance_km=round(distance_m / 1000, 3) if distance_m else None,
