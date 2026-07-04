@@ -7,9 +7,10 @@ import type { WorkoutDetail as WD, StrengthSet } from "@/types";
 import { fmt } from "@/lib/fmt";
 import {
   ArrowLeft, ArrowRight, Clock, Flame, Heart, Zap,
-  TrendingUp, Activity, Dumbbell, Bike, Footprints, Trash2,
+  TrendingUp, Activity, Dumbbell, Bike, Footprints, Trash2, Pencil,
 } from "lucide-react";
 import { Card, Badge, Skeleton, Button, Modal } from "@/components/ui";
+import WorkoutFormModal from "@/components/WorkoutFormModal";
 import { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,12 +29,15 @@ export default function WorkoutDetailPage() {
   const [loading, setLoading] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
-  useEffect(() => {
+  const reload = () => {
     const id = Number(params.id);
     if (!id) return;
     api.workouts.get(id).then(setWorkout).finally(() => setLoading(false));
-  }, [params.id]);
+  };
+
+  useEffect(reload, [params.id]);
 
   async function handleDelete() {
     if (!workout) return;
@@ -99,13 +103,22 @@ export default function WorkoutDetailPage() {
               </div>
               <p className="text-muted text-sm mt-1">{fmt.dateTime(workout.start_at)} &middot; {workout.source.replace("_", " ")}</p>
             </div>
-            <button
-              aria-label="Delete workout"
-              className="p-2 rounded-md text-muted hover:text-danger hover:bg-surface-2 transition-colors"
-              onClick={() => setConfirmDelete(true)}
-            >
-              <Trash2 size={18} />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                aria-label="Edit workout"
+                className="p-2 rounded-md text-muted hover:text-text hover:bg-surface-2 transition-colors"
+                onClick={() => setEditOpen(true)}
+              >
+                <Pencil size={17} />
+              </button>
+              <button
+                aria-label="Delete workout"
+                className="p-2 rounded-md text-muted hover:text-danger hover:bg-surface-2 transition-colors"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 size={18} />
+              </button>
+            </div>
           </div>
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))" }}>
             <DetailStat icon={Clock} label="Duration" value={Math.round(workout.duration_mins)} unit="min" />
@@ -157,6 +170,13 @@ export default function WorkoutDetailPage() {
           </Card>
         )}
       </div>
+
+      <WorkoutFormModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onSaved={reload}
+        editing={workout}
+      />
 
       <Modal
         open={confirmDelete}

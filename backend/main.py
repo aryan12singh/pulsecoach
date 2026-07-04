@@ -23,6 +23,17 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         from services.settings_service import seed_from_env
         await seed_from_env(db)
+        # A restart kills in-flight background imports; mark them so the UI
+        # stops polling and tells the user to re-upload.
+        from sqlalchemy import update as sa_update
+
+        from models import ImportJob
+        await db.execute(
+            sa_update(ImportJob)
+            .where(ImportJob.status.in_(["pending", "running"]))
+            .values(status="error", error="Interrupted by a server restart — re-upload the file.")
+        )
+        await db.commit()
     yield
 
 

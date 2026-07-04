@@ -16,13 +16,24 @@ export function handleError(error: unknown, context: string = "Operation failed"
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
 const BASE = API_BASE;
 
+// With APP_PASSWORD auth enabled, an expired session returns 401 from the
+// proxy — send the user to the login page instead of surfacing raw errors.
+function checkAuth(res: Response): void {
+  if (res.status === 401 && typeof window !== "undefined" && window.location.pathname !== "/login") {
+    window.location.href = "/login";
+  }
+}
+
 async function get<T>(path: string, params?: Record<string, string>): Promise<T> {
-  const url = new URL(BASE + path);
+  const url = new URL(BASE + path, typeof window !== "undefined" ? window.location.origin : undefined);
   if (params) {
     Object.entries(params).forEach(([k, v]) => v && url.searchParams.set(k, v));
   }
   const res = await fetch(url.toString(), { cache: "no-store" });
-  if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
+  if (!res.ok) {
+    checkAuth(res);
+    throw new Error(`GET ${path} → ${res.status}`);
+  }
   return res.json();
 }
 
@@ -32,7 +43,10 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`POST ${path} → ${res.status}`);
+  if (!res.ok) {
+    checkAuth(res);
+    throw new Error(`POST ${path} → ${res.status}`);
+  }
   return res.json();
 }
 
@@ -42,20 +56,29 @@ async function put<T>(path: string, body: unknown): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`PUT ${path} → ${res.status}`);
+  if (!res.ok) {
+    checkAuth(res);
+    throw new Error(`PUT ${path} → ${res.status}`);
+  }
   return res.json();
 }
 
 async function del(path: string): Promise<void> {
   const res = await fetch(BASE + path, { method: "DELETE" });
-  if (!res.ok && res.status !== 204) throw new Error(`DELETE ${path} → ${res.status}`);
+  if (!res.ok && res.status !== 204) {
+    checkAuth(res);
+    throw new Error(`DELETE ${path} → ${res.status}`);
+  }
 }
 
 async function _postFile<T = { job_id: string }>(path: string, fieldName: string, file: File): Promise<T> {
   const form = new FormData();
   form.append(fieldName, file);
   const res = await fetch(BASE + path, { method: "POST", body: form });
-  if (!res.ok) throw new Error(`POST ${path} → ${res.status}`);
+  if (!res.ok) {
+    checkAuth(res);
+    throw new Error(`POST ${path} → ${res.status}`);
+  }
   return res.json();
 }
 
@@ -68,6 +91,7 @@ export const api = {
     weeklySummary: () => get<WeeklySummary>("/workouts/summary/weekly"),
     monthlySummary: () => get<MonthlySummary>("/workouts/summary/monthly"),
     create: (body: unknown) => post<Workout>("/workouts", body),
+    update: (id: number, body: unknown) => put<WorkoutDetail>(`/workouts/${id}`, body),
     delete: (id: number) => del(`/workouts/${id}`),
   },
 
@@ -80,6 +104,7 @@ export const api = {
     list: (params?: Record<string, string>) => get<HealthMetric[]>("/metrics", params),
     summary: () => get<MetricSummaryItem[]>("/metrics/summary"),
     create: (body: unknown) => post<HealthMetric>("/metrics", body),
+    delete: (id: number) => del(`/metrics/${id}`),
   },
 
   goals: {
@@ -92,6 +117,7 @@ export const api = {
   coaching: {
     chat: (message: string) => post<ChatMessage>("/coaching/chat", { message }),
     history: () => get<ChatMessage[]>("/coaching/history"),
+    streamUrl: () => `${BASE}/coaching/chat/stream`,
   },
 
   hevy: {

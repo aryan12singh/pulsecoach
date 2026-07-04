@@ -61,6 +61,20 @@ class WorkoutIn(BaseModel):
     sets: list[StrengthSetIn] = []
 
 
+class WorkoutUpdate(BaseModel):
+    """Partial update; `sets` replaces all strength sets when provided."""
+    workout_type: WorkoutTypeEnum | None = None
+    raw_type: str | None = None
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+    duration_mins: float | None = None
+    active_calories: float | None = None
+    avg_heart_rate: float | None = None
+    max_heart_rate: float | None = None
+    distance_km: float | None = None
+    sets: list[StrengthSetIn] | None = None
+
+
 class WorkoutOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { api, handleError } from "@/lib/api";
 import type { HealthMetric } from "@/types";
 import { fmt } from "@/lib/fmt";
-import { Scale, Activity, Bed, Heart, Plus, Check } from "lucide-react";
+import { Scale, Activity, Bed, Heart, Plus, Check, History, Trash2 } from "lucide-react";
 import { Card, Segmented, Skeleton, Badge, Button, Modal } from "@/components/ui";
 import { Field, Input, Select } from "@/components/ui/FormFields";
 import Trend from "@/components/ui/Trend";
@@ -46,6 +46,7 @@ export default function TrendsPage() {
   const [metricsByType, setMetricsByType] = useState<Record<string, HealthMetric[]>>({});
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [managing, setManaging] = useState<{ key: string; label: string; unit: string } | null>(null);
 
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
@@ -106,6 +107,14 @@ export default function TrendsPage() {
                       <span className="ml-1"><Trend value={trend} invert={invert} /></span>
                     </div>
                   </div>
+                  <button
+                    aria-label={`Manage ${m.label} readings`}
+                    title="Manage readings"
+                    className="p-2 rounded-md text-faint hover:text-text hover:bg-surface-2 transition-colors"
+                    onClick={() => setManaging({ key: m.key, label: m.label, unit: m.unit })}
+                  >
+                    <History size={16} />
+                  </button>
                 </div>
                 <LineChart
                   data={all}
@@ -120,7 +129,79 @@ export default function TrendsPage() {
       )}
 
       <MetricFormModal open={showForm} onClose={() => setShowForm(false)} onSaved={load} />
+      <ManageReadingsModal
+        metric={managing}
+        readings={managing ? metricsByType[managing.key] || [] : []}
+        onClose={() => setManaging(null)}
+        onChanged={load}
+      />
     </div>
+  );
+}
+
+/* ---------- Manage readings modal ---------- */
+function ManageReadingsModal({
+  metric, readings, onClose, onChanged,
+}: {
+  metric: { key: string; label: string; unit: string } | null;
+  readings: HealthMetric[];
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [deleting, setDeleting] = useState<number | null>(null);
+  const recent = [...readings].reverse().slice(0, 30);
+
+  async function remove(id: number) {
+    setDeleting(id);
+    try {
+      await api.metrics.delete(id);
+      toast.success("Reading deleted");
+      onChanged();
+    } catch (e) {
+      handleError(e, "Failed to delete reading");
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  return (
+    <Modal
+      open={!!metric}
+      onClose={onClose}
+      title={metric ? `${metric.label} readings` : ""}
+      footer={<Button onClick={onClose}>Done</Button>}
+    >
+      {recent.length === 0 ? (
+        <p className="text-muted text-sm">No readings yet.</p>
+      ) : (
+        <div className="flex flex-col max-h-[50vh] overflow-y-auto -mx-1 px-1">
+          {recent.map((r) => (
+            <div key={r.id} className="flex items-center justify-between py-2.5 border-t border-border first:border-t-0">
+              <div>
+                <span className="num text-sm font-semibold">{fmt.num(r.value, r.value % 1 ? 1 : 0)}</span>
+                <span className="text-muted text-xs ml-1">{metric?.unit}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-muted text-xs">
+                  {fmt.date(r.recorded_at, { month: "short", day: "numeric", year: "numeric" })} · {r.source.replace("_", " ")}
+                </span>
+                <button
+                  aria-label="Delete reading"
+                  disabled={deleting === r.id}
+                  className="p-1.5 rounded-md text-muted hover:text-danger hover:bg-surface-2 transition-colors disabled:opacity-40"
+                  onClick={() => remove(r.id)}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-faint text-xs mt-3">
+        Showing the latest {recent.length} readings. Deleting an imported reading is safe — re-importing restores it.
+      </p>
+    </Modal>
   );
 }
 

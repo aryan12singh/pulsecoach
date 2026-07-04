@@ -5,9 +5,11 @@ import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import AsyncSessionLocal, get_db
+from models import ImportJob
 from services import settings_service as svc
 from services.ingestion.apple_health import AppleHealthAdapter
 from services.ingestion.persist import upsert
@@ -17,11 +19,6 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 _apple_adapter = AppleHealthAdapter()
 
-# In-memory job store (single-user, process-local). Lost on restart — the
-# frontend treats an unknown job id as "job lost". Capped so it can't grow
-# unbounded.
-_jobs: dict[str, dict] = {}
-_MAX_JOBS = 50
 
 
 def _ingest_summary(counts) -> dict:
@@ -190,17 +187,19 @@ async def strava_sync(db: AsyncSession = Depends(get_db)):
 
 
 # ── Bulk file import ────────────────────────────────────────────────────────────
+# Jobs are persisted to Postgres (import_jobs) so polling survives restarts.
 
-def _new_job() -> str:
-    # Evict oldest finished jobs once over the cap
-    if len(_jobs) >= _MAX_JOBS:
-        for jid in [j for j, v in _jobs.items() if v["status"] in ("done", "error")]:
-            del _jobs[jid]
-            if len(_jobs) < _MAX_JOBS:
-                break
+async def _new_job(db: AsyncSession, source: str) -> str:
     job_id = str(uuid.uuid4())
-    _jobs[job_id] = {"status": "pending", "progress": 0, "result": None, "error": None}
+    db.add(ImportJob(id=job_id, source=source, status="pending"))
+    await db.commit()
     return job_id
+
+
+async def _update_job(job_id: str, **fields) -> None:
+    async with AsyncSessionLocal() as db:
+        await db.execute(update(ImportJob).where(ImportJob.id == job_id).values(**fields))
+        await db.commit()
 
 
 async def _write_temp(upload: UploadFile, suffix: str) -> str:
@@ -214,7 +213,7 @@ async def _write_temp(upload: UploadFile, suffix: str) -> str:
 
 
 async def _run_import_job(job_id: str, file_path: str, source: str) -> None:
-    _jobs[job_id]["status"] = "running"
+    await _update_job(job_id, status="running")
     errors: list[str] = []
     try:
         async with AsyncSessionLocal() as db:
@@ -234,18 +233,16 @@ async def _run_import_job(job_id: str, file_path: str, source: str) -> None:
 
             counts = await upsert(result, db)
 
-        _jobs[job_id]["status"] = "done"
-        _jobs[job_id]["result"] = {
+        await _update_job(job_id, status="done", result={
             "workouts_added": counts.workouts_inserted,
             "workouts_skipped_dupe": counts.workouts_updated,
             "sets_added": counts.sets_inserted,
             "metrics_added": counts.metrics_inserted,
             "errors": errors,
-        }
+        })
     except Exception as exc:
         logger.error("Import job %s failed: %s", job_id, exc, exc_info=True)
-        _jobs[job_id]["status"] = "error"
-        _jobs[job_id]["error"] = str(exc)
+        await _update_job(job_id, status="error", error=str(exc))
     finally:
         try:
             os.remove(file_path)
@@ -258,10 +255,11 @@ async def _run_import_job(job_id: str, file_path: str, source: str) -> None:
 async def import_apple_health(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
 ):
     suffix = ".zip" if (file.filename or "").lower().endswith(".zip") else ".xml"
     path = await _write_temp(file, suffix)
-    job_id = _new_job()
+    job_id = await _new_job(db, "apple_health")
     background_tasks.add_task(_run_import_job, job_id, path, "apple_health")
     return {"job_id": job_id}
 
@@ -275,7 +273,7 @@ async def import_hevy(
     if not await svc.get_bool("hevy_enabled", db):
         raise HTTPException(status_code=404, detail="Hevy integration not enabled")
     path = await _write_temp(file, ".csv")
-    job_id = _new_job()
+    job_id = await _new_job(db, "hevy")
     background_tasks.add_task(_run_import_job, job_id, path, "hevy")
     return {"job_id": job_id}
 
@@ -290,15 +288,15 @@ async def import_strava(
         raise HTTPException(status_code=404, detail="Strava integration not enabled")
     suffix = ".zip" if (file.filename or "").lower().endswith(".zip") else ".csv"
     path = await _write_temp(file, suffix)
-    job_id = _new_job()
+    job_id = await _new_job(db, "strava")
     background_tasks.add_task(_run_import_job, job_id, path, "strava")
     return {"job_id": job_id}
 
 
 @router.get("/jobs/{job_id}")
-async def get_job(job_id: str):
+async def get_job(job_id: str, db: AsyncSession = Depends(get_db)):
     """Poll the status of a background import job."""
-    job = _jobs.get(job_id)
+    job = (await db.execute(select(ImportJob).where(ImportJob.id == job_id))).scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    return job
+    return {"status": job.status, "progress": 0, "result": job.result, "error": job.error}

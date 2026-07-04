@@ -96,6 +96,19 @@ async def list_metrics(
     return rows
 
 
+@router.delete("/{metric_id}", status_code=204)
+async def delete_metric(metric_id: int, db: AsyncSession = Depends(get_db)):
+    """Remove a single reading (bad manual entry, import glitch)."""
+    metric = (await db.execute(
+        select(HealthMetric).where(HealthMetric.id == metric_id)
+    )).scalar_one_or_none()
+    if not metric:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Metric not found")
+    await db.delete(metric)
+    await db.commit()
+
+
 @router.post("", response_model=MetricOut, status_code=201)
 async def create_metric(body: MetricIn, db: AsyncSession = Depends(get_db)):
     recorded_at = body.recorded_at or datetime.now(timezone.utc)

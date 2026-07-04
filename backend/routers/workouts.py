@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from database import get_db
 from models import SourceEnum, StrengthSet, Workout, WorkoutTypeEnum
-from schemas import MonthlySummary, WeeklySummary, WorkoutDetail, WorkoutIn, WorkoutOut
+from schemas import MonthlySummary, WeeklySummary, WorkoutDetail, WorkoutIn, WorkoutOut, WorkoutUpdate
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
 
@@ -110,16 +110,9 @@ async def get_workout(workout_id: int, db: AsyncSession = Depends(get_db)):
     return workout
 
 
-@router.post("", response_model=WorkoutOut, status_code=201)
-async def create_workout(body: WorkoutIn, db: AsyncSession = Depends(get_db)):
-    sets_data = body.sets
-    data = body.model_dump(exclude={"sets"})
-    workout = Workout(**data)
-    db.add(workout)
-    await db.flush()
-
-    # Derive exercise_order (first appearance) and per-exercise set_number
-    # when the client omits them.
+def _add_sets(workout: Workout, sets_data, db: AsyncSession) -> None:
+    """Attach sets, deriving exercise_order (first appearance) and per-exercise
+    set_number when the client omits them."""
     order_map: dict[str, int] = {}
     set_counts: dict[str, int] = {}
     for s in sets_data:
@@ -132,12 +125,50 @@ async def create_workout(body: WorkoutIn, db: AsyncSession = Depends(get_db)):
         if payload["set_number"] is None:
             payload["set_number"] = set_counts[s.exercise_name]
         db.add(StrengthSet(workout_id=workout.id, **payload))
-    if sets_data:
-        workout.has_strength_detail = True
+    workout.has_strength_detail = bool(sets_data)
 
+
+@router.post("", response_model=WorkoutOut, status_code=201)
+async def create_workout(body: WorkoutIn, db: AsyncSession = Depends(get_db)):
+    workout = Workout(**body.model_dump(exclude={"sets"}))
+    db.add(workout)
+    await db.flush()
+    _add_sets(workout, body.sets, db)
     await db.commit()
     await db.refresh(workout)
     return workout
+
+
+@router.put("/{workout_id}", response_model=WorkoutDetail)
+async def update_workout(workout_id: int, body: WorkoutUpdate, db: AsyncSession = Depends(get_db)):
+    """Update workout fields; a provided `sets` list replaces all strength sets."""
+    stmt = (
+        select(Workout)
+        .options(selectinload(Workout.strength_sets))
+        .where(Workout.id == workout_id)
+    )
+    workout = (await db.execute(stmt)).scalar_one_or_none()
+    if not workout:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Workout not found")
+
+    data = body.model_dump(exclude_unset=True)
+    sets_data = data.pop("sets", None)
+    for k, v in data.items():
+        setattr(workout, k, v)
+
+    if sets_data is not None:
+        from sqlalchemy import delete as sa_delete
+        await db.execute(sa_delete(StrengthSet).where(StrengthSet.workout_id == workout.id))
+        _add_sets(workout, body.sets, db)
+
+    await db.commit()
+    # populate_existing: the bulk delete bypassed the identity map, so the
+    # cached strength_sets collection must be reloaded from the database.
+    result = (
+        await db.execute(stmt.execution_options(populate_existing=True))
+    ).scalar_one()
+    return result
 
 
 @router.delete("/{workout_id}", status_code=204)
