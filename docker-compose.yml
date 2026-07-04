@@ -47,6 +47,10 @@ services:
     environment:
       # Where the /api proxy forwards requests (server-side, read at runtime)
       BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
+      # Optional login password. Empty = no login (local use). When set, every
+      # page and /api call requires signing in; also firewall or remove the
+      # backend's 8010 port mapping above so the proxy is the only way in.
+      APP_PASSWORD: ${APP_PASSWORD:-}
     ports:
       - "3010:3000"
     depends_on:

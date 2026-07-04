@@ -141,6 +141,7 @@ Copy `.env.example` to `.env`. You only need to fill in what you want to use —
 | `DATABASE_URL` | **yes** | set by Compose | Postgres connection string — do not change when using Docker Compose |
 | `NEXT_PUBLIC_API_URL` | no | *(empty — use `/api` proxy)* | Leave empty so the browser talks to the API through the frontend's same-origin `/api` proxy (works from phones/other hosts without a rebuild). Set to `http://localhost:8010` to hit the backend directly |
 | `BACKEND_URL` | no | `http://backend:8000` | Where the frontend's `/api` proxy forwards requests (runtime, not baked into the build) |
+| `APP_PASSWORD` | no | *(empty — no login)* | Set to require a password for every page and API call; webhook endpoints still use `WEBHOOK_SECRET` |
 | `SEED_DEMO` | no | `false` | Set `true` to load demo workouts/metrics into an empty database |
 | `LOG_LEVEL` | no | `INFO` | Backend log verbosity (`DEBUG`/`INFO`/`WARNING`) |
 | `ENABLE_HEVY` | no | `false` | Bootstrap: seed `hevy_enabled` on first run |
@@ -423,6 +424,8 @@ can reach port 3010 gets the full app — no extra config:
 3. iOS Safari: Share → **Add to Home Screen** — PulseCoach installs as a standalone app with its own icon.
 4. Import files directly from the phone: Settings → Import data works with
    `export.zip` from the Files app.
+5. Optional: set `APP_PASSWORD` in `.env` to require a login — worthwhile on
+   any network you don't fully control.
 
 For access away from home (and HTTPS), see [docs/DEPLOY.md](docs/DEPLOY.md).
 
@@ -479,7 +482,7 @@ docker compose up --build
 
 ## Security notes
 
-This app is designed for **local, single-user use**. It has no authentication layer — anyone who can reach the port can access it.
+This app is designed for **local, single-user use**. By default there is no login — anyone who can reach the port can access it. Set `APP_PASSWORD` in `.env` to require a password on every page and API call (webhooks still authenticate via `WEBHOOK_SECRET`); do this before exposing the app beyond your machine.
 
 **On storing credentials in the database:**
 - API keys and OAuth secrets are stored in the `app_settings` table inside your local Postgres volume.
