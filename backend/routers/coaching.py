@@ -25,6 +25,20 @@ async def chat(body: ChatIn, db: AsyncSession = Depends(get_db)):
     return session
 
 
+@router.post("/chat/stream")
+async def chat_stream(body: ChatIn, db: AsyncSession = Depends(get_db)):
+    """SSE stream: delta events while Claude responds, then a done event with the saved session."""
+    await _require_coaching(db)
+    from fastapi.responses import StreamingResponse
+
+    from services.claude_service import stream_coaching_response
+    return StreamingResponse(
+        stream_coaching_response(body.message, db),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.get("/history", response_model=list[ChatOut])
 async def history(limit: int = 50, db: AsyncSession = Depends(get_db)):
     await _require_coaching(db)
